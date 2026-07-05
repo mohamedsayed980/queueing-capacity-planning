@@ -9,6 +9,8 @@
 > **Modernizing a 1999 M.Sc. Thesis into a Professional Digital Twin Platform**
 >
 > *"A Queueing-Oriented Decision Process for Capacity Planning in a Job Shop Environment"*
+>
+> *Ain Shams University · Faculty of Engineering · Cairo, Egypt · 1999*
 
 ---
 
@@ -33,6 +35,20 @@ job shop.
 🏭 Single case study             →  🔬 Experiment runner (∞ scenarios)
 📋 Paper document                →  🌐 Professional web application
 ```
+
+### 💬 The Real Story
+
+> *"I wrote this thesis at Ain Shams University in 1999 as part of my M.Sc. in*
+> *Mechanical Engineering. Twenty-five years later, I decided to rebuild it —*
+> *not for any degree or obligation — but because I believed the work deserved*
+> *to live again in modern form.*
+>
+> *I rebuilt everything from scratch: the mathematics, the simulation engine,*
+> *the economic optimization model, and the interactive dashboard.*
+>
+> *This is what happens when an engineer refuses to let good work stay on a shelf."*
+>
+> — **Eng. Mohammed Mohammed Sayed Mohammed**, Cairo 2026
 
 ---
 
@@ -296,6 +312,15 @@ This project is based on the M.Sc. thesis:
 - **Economic Optimization** (Net Revenue maximization)
 - **Discrete-Event Simulation** (SimPy DES)
 
+### Original Thesis
+> Mohammed, M.M.S. (1999).
+> **"A Queueing Oriented Decision Process for Capacity Planning
+> in a Job Shop Environment"**.
+> M.Sc. Thesis, Department of Mechanical Engineering (Production),
+> Faculty of Engineering, Ain Shams University, Cairo, Egypt.
+>
+> Supervised by Prof. Amin K. ELkharbotly
+
 ### Key References
 - Kleinrock, L. (1975). *Queueing Systems, Volume 1*
 - Gross, D. & Harris, C. (1998). *Fundamentals of Queueing Theory*
@@ -306,10 +331,20 @@ This project is based on the M.Sc. thesis:
 
 ## 👤 Author
 
-**Mohamed M.**
-- M.Sc. Industrial Engineering (1999)
-- Platform Modernization (2026)
-- *Turning 25-year-old academic work into modern engineering tools*
+**Eng. Mohammed Mohammed Sayed Mohammed**
+
+| | |
+|--|--|
+| 🎓 **Degree** | M.Sc. Mechanical Engineering (Production) |
+| 🏛️ **University** | Ain Shams University, Faculty of Engineering, Cairo |
+| 📅 **Original Thesis** | 1999 |
+| 💻 **Platform Modernization** | 2026 |
+| 👨‍🏫 **Thesis Supervisor** | Prof. Amin K. ELkharbotly |
+| | Design & Production Engineering Dept., Ain Shams University |
+
+> *"I wrote this thesis in 1999. 25 years later, I rebuilt it
+> using modern Python, SimPy, and Streamlit — proving that
+> good academic work never expires. It just needs modern tools to come alive."*
 
 ---
 
@@ -322,10 +357,19 @@ See [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
-Built with dedication to the idea that **good academic work never expires —
-it just needs modern tools to come alive.**
+Special thanks to the original thesis supervisors:
+- **Prof. Amin K. ELkharbotly** — Design & Production Engineering Dept.
+- **Dr. Nahed Sobhi Mohamed** — Design & Production Engineering Dept.
+- **Dr. Mahmoud Abd El-Moemen Atalla** — Engineering Physics & Mathematics Dept.
 
-> *"The equations are timeless. The platform is new. The insight is yours."*
+*Faculty of Engineering, Ain Shams University, Cairo, Egypt (1999)*
+
+---
+
+Built 25 years later with the conviction that
+**good academic work never expires — it just needs modern tools to come alive.**
+
+> *"The equations were written in 1999. The platform is new. The insight endures."*
 
 ---
 
