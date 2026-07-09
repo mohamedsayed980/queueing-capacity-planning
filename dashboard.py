@@ -140,7 +140,7 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────────────────────────
 # TABS
 # ─────────────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
     "📊 Queue Analysis",
     "💰 Capacity Planning",
     "📅 Monthly Schedule",
@@ -150,6 +150,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "🔴 Live Simulation",
     "📊 Statistical Reports",
     "🔧 Input & Fit",
+    "🎬 Animation",
 ])
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1281,9 +1282,9 @@ with tab9:
                 cc1.text_input("Product", p["name"],
                     disabled=True, key=f"cp9_{i}")
                 sp_i = cc2.number_input("SP [$/u]",
-                    100.0, 500000.0, float(sp_d), key=f"sp9_{i}")
+                    100.0, 2_000_000.0, float(sp_d), key=f"sp9_{i}")
                 f1_i = cc3.number_input("F1 [$/u]",
-                    100.0, 500000.0, float(f1_d), key=f"f19_{i}")
+                    100.0, 2_000_000.0, float(f1_d), key=f"f19_{i}")
                 NR_i = sp_i - f1_i
                 ratio_i = f1_i/sp_i if sp_i>0 else 0
                 cc4.metric("NR [$/u]", f"${NR_i:,.0f}",
@@ -1294,22 +1295,34 @@ with tab9:
                     "F1/SP":round(ratio_i,3)
                 })
         else:
-            st.markdown("**Table 4.2 cost components:**")
+            st.markdown("**Table 4.2 cost components (shared rates):**")
             c5,c6,c7,c8 = st.columns(4)
             DL9  = c5.number_input("DL [$/hr]",  0.0,500.0,10.0,key="dl9")
             DM9  = c6.number_input("DM [$/hr]",  0.0,500.0,50.0,key="dm9")
             IDL9 = c7.number_input("IDL [$/hr]", 0.0,200.0, 5.0,key="idl9")
             IDM9 = c8.number_input("IDM [$/hr]", 0.0,200.0,25.0,key="idm9")
-            c9,c10 = st.columns(2)
-            DMAT9 = c9.number_input("D_MAT [$/u]",0.0,50000.0,2000.0,key="dm9b")
-            FC9   = c10.number_input("FC [$/hr]", 0.0,500.0,0.0,key="fc9")
+            FC9  = st.number_input("FC [$/hr]", 0.0,500.0,0.0,key="fc9")
             st.caption("⚠️ SP_standard_parts EXCLUDED (CL-9): "
                        "already embedded in SP for applicable products")
+            st.markdown("**Per-product SP & D_MAT** — editable, since SP "
+                       "(Table 4.2/4.9) and material cost D_MAT differ by "
+                       "product type. Defaults shown are the old thesis "
+                       "reference values where available; override freely "
+                       "for new/2026 products.")
             sp_defaults = [45000,55000,25000,15000,3000,8000]
+            dmat_defaults = [2000,2000,2000,2000,2000,2000]
             for i, p in enumerate(prod_inputs):
-                sp_i = sp_defaults[i] if i<len(sp_defaults) else 10000
+                sp_d = sp_defaults[i] if i<len(sp_defaults) else 10000
+                dmat_d = dmat_defaults[i] if i<len(dmat_defaults) else 2000
+                cc1,cc2,cc3 = st.columns([1,1,1])
+                cc1.text_input("Product", p["name"],
+                    disabled=True, key=f"cpd9_{i}")
+                sp_i = cc2.number_input("SP [$/u]",
+                    100.0, 2_000_000.0, float(sp_d), key=f"spd9_{i}")
+                dmat_i = cc3.number_input("D_MAT [$/u]",
+                    0.0, 2_000_000.0, float(dmat_d), key=f"dm9b_{i}")
                 c_det = compute_cost_detailed(
-                    sp_i,DL9,DM9,IDL9,IDM9,DMAT9,FC9)
+                    sp_i,DL9,DM9,IDL9,IDM9,dmat_i,FC9)
                 cost_rows.append({
                     "Product":p["name"],"SP":sp_i,
                     "F1":c_det["F1"],"NR":c_det["NR"],
@@ -1451,5 +1464,78 @@ with col_f1:
 with col_f2:
     st.caption("📖 Thesis_Modernization_Notes.md — CL-1→13 reference")
 
+# ═══════════════════════════════════════════════════════════════════
+# TAB 10 — ANIMATED FACTORY FLOOR (Session 1, New Project Track A)
+# ═══════════════════════════════════════════════════════════════════
+with tab10:
+    st.header("🎬 Animated Factory Floor")
+    st.caption("Live-style Plotly animation of jobs flowing Stage 1 → 2 → 3, "
+               "built on the same live_simulation.py DES engine as Tab 7")
 
+    try:
+        from animation_engine import load_snapshots_from_live, build_animation_figure
+        anim_available = True
+    except ImportError:
+        anim_available = False
+        st.error("animation_engine.py not found. Place it in the same folder.")
 
+    if anim_available:
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            st.subheader("⚙️ Animation Config")
+            mode10 = st.radio("λ Source", ["Experimental", "Actual MPS"], key="mode10")
+            policy10 = st.radio("Service Policy", ["exhaustive", "gated"], key="pol10")
+            n_sh10 = st.selectbox("Shifts/day", [1, 2, 3], key="sh10")
+            sim_t10 = st.slider("Sim time [hr]", 50, 1000, 200, 25, key="st10")
+            speed10 = st.select_slider("Playback speed",
+                options=["0.5x", "1x", "2x", "4x"], value="1x", key="sp10")
+            speed_ms10 = {"0.5x": 600, "1x": 300, "2x": 150, "4x": 75}[speed10]
+
+            st.divider()
+            st.markdown("**Server Config (CL-12):**")
+            S10 = []
+            for j, (nm, df) in enumerate(zip(["Cutting", "Punching", "Bending"], [5, 3, 5])):
+                sv = st.slider(f"S{j+1} {nm}", 1, 10, df, key=f"s10_{j}")
+                S10.append(sv)
+
+            st.caption("⚠️ At the default S=[5,3,5], Stages 1–2 run near/at "
+                       "ρ=1.0 with either product set — queues grow without "
+                       "bound past the break-even point (see Facilitation "
+                       "note #4). Dots per stage are capped at 25 for "
+                       "readability; the true queue count is still shown.")
+
+            run10 = st.button("▶ GENERATE ANIMATION", type="primary", key="run10")
+
+        with c2:
+            if run10:
+                with st.spinner("Running simulation and building animation frames..."):
+                    snaps10 = load_snapshots_from_live(
+                        S_stages=S10, policy=policy10, n_shifts=n_sh10,
+                        sim_time=sim_t10, warmup=max(sim_t10 // 10, 5),
+                        snapshot_interval=max(sim_t10 // 40, 5),
+                        product_mode=mode10,
+                    )
+                    fig10 = build_animation_figure(snaps10, frame_duration_ms=speed_ms10)
+                st.session_state["tab10_fig"] = fig10
+                st.session_state["tab10_frames"] = len(snaps10)
+
+            if "tab10_fig" in st.session_state:
+                st.plotly_chart(st.session_state["tab10_fig"], use_container_width=True)
+                st.caption(f"{st.session_state['tab10_frames']} frames generated.")
+            else:
+                st.info("👆 Configure parameters and click GENERATE ANIMATION")
+                st.markdown("""
+                **What this animation shows:**
+                - 🟢 idle machine · 🔴 busy machine (per stage, CL-12 groups)
+                - Colored dots = jobs queued/in-service (colored by product)
+                - Per-stage queue counter, with a saturation warning
+                - Play / Pause / Reset + frame-by-frame timeline slider
+
+                **Note on data fidelity:** live_simulation.py logs
+                *aggregate* KPI counts per snapshot (busy/idle/queue), not
+                individual job identity. Product colors on queued/in-service
+                dots are therefore a weighted approximation (by ρ), not an
+                exact per-job trace. Exact per-job animation would need a
+                small logging patch to live_simulation.py — ask if you'd
+                like that built next.
+                """)
