@@ -244,6 +244,38 @@ def _convert_live_snapshot(raw: dict, products: List[dict]) -> dict:
             "queue_len": queue_len}
 
 
+def get_product_names(product_mode: str = "Experimental") -> List[str]:
+    """
+    Returns the actual product type names used by live_simulation.py for
+    the given mode — the source of truth for building a matching cfg.
+    (Forward-compatible: once Global Product Source (Option E) exists,
+    a Tab-9-fitted product name list can be passed straight into
+    build_cfg_for_run() below instead of this function's output.)
+    """
+    live = importlib.import_module("live_simulation")
+    products = (live.PRODUCTS_EXP if product_mode == "Experimental"
+                else live.PRODUCTS_ACTUAL)
+    return [p["type"] for p in products]
+
+
+_PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+            "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+
+
+def build_cfg_for_run(S_stages: List[int], product_names: List[str]) -> SimConfig:
+    """
+    Builds a SimConfig whose `servers_per_stage` and `products` actually
+    match what was simulated, instead of relying on SimConfig()'s demo
+    placeholder defaults (S=[5,3,5], products={8BD,6AX,STD}) — which
+    silently drop any job whose product name isn't one of those 3, and
+    mis-render machine slots if S_stages differs from the default.
+    """
+    products = {name: _PALETTE[i % len(_PALETTE)]
+                for i, name in enumerate(product_names)}
+    servers = {i + 1: s for i, s in enumerate(S_stages)}
+    return SimConfig(servers_per_stage=servers, products=products)
+
+
 def load_snapshots_from_live(S_stages=None, policy="exhaustive", n_shifts=1,
                               sim_time=1500, warmup=150, snapshot_interval=50,
                               seed=42, product_mode="Experimental") -> List[dict]:

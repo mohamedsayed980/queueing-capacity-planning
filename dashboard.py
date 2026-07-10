@@ -1473,7 +1473,8 @@ with tab10:
                "built on the same live_simulation.py DES engine as Tab 7")
 
     try:
-        from animation_engine import load_snapshots_from_live, build_animation_figure
+        from animation_engine import (load_snapshots_from_live, build_animation_figure,
+                                       get_product_names, build_cfg_for_run)
         anim_available = True
     except ImportError:
         anim_available = False
@@ -1515,13 +1516,18 @@ with tab10:
                         snapshot_interval=max(sim_t10 // 40, 5),
                         product_mode=mode10,
                     )
-                    fig10 = build_animation_figure(snaps10, frame_duration_ms=speed_ms10)
+                    prod_names10 = get_product_names(mode10)
+                    cfg10 = build_cfg_for_run(S10, prod_names10)
+                    fig10 = build_animation_figure(snaps10, cfg10, frame_duration_ms=speed_ms10)
                 st.session_state["tab10_fig"] = fig10
                 st.session_state["tab10_frames"] = len(snaps10)
+                st.session_state["tab10_products"] = prod_names10
 
             if "tab10_fig" in st.session_state:
                 st.plotly_chart(st.session_state["tab10_fig"], use_container_width=True)
-                st.caption(f"{st.session_state['tab10_frames']} frames generated.")
+                st.caption(f"{st.session_state['tab10_frames']} frames generated · "
+                           f"{len(st.session_state.get('tab10_products', []))} products: "
+                           f"{', '.join(st.session_state.get('tab10_products', []))}")
             else:
                 st.info("👆 Configure parameters and click GENERATE ANIMATION")
                 st.markdown("""
