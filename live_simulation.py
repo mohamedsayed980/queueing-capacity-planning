@@ -163,6 +163,7 @@ class LiveSimulation:
         self.queue_obs     = defaultdict(list)   # stage → [queue lengths]
         self.busy_obs      = defaultdict(list)   # stage → [busy counts]
         self.revenue       = defaultdict(float)  # ptype → revenue earned
+        self._job_seq      = 0          # ADDITIVE: unique per-job id counter
 
     def _job_process(self, env, stages, prod, is_warmup_fn):
         """
@@ -173,6 +174,9 @@ class LiveSimulation:
         t_enter    = env.now
         stage_tms  = prod["stage_times"]
 
+        self._job_seq += 1
+        job_id = f"{ptype}-{self._job_seq}"   # ADDITIVE: per-job identity tag
+
         for j, stage in enumerate(stages):
             t_arrive_j = env.now
 
@@ -181,7 +185,14 @@ class LiveSimulation:
                 overhead = random.expovariate(20.0)  # small gate delay
                 yield env.timeout(overhead)
 
-            with stage.request() as req:
+            req = stage.request()
+            # ADDITIVE tags for exact per-job animation (does not affect
+            # SimPy resource semantics/timing — request() is created at
+            # the same point in the process either way):
+            req.job_id  = job_id
+            req.product = ptype
+            req.stage   = j + 1
+            with req:
                 yield req
                 wait_j = env.now - t_arrive_j
                 # Exponential service with mean = stage_time[j]
@@ -276,6 +287,26 @@ class LiveSimulation:
         # Bottleneck product: highest rho
         bn_prod = max(product_kpis, key=lambda x: x["rho"])
 
+        # ADDITIVE: exact per-job identity list (for animation_engine.py).
+        # Built from the job_id/product tags attached to each stage's
+        # Request objects — does not affect any existing snapshot field.
+        jobs_detail = []
+        for j, stage in enumerate(stages):
+            for req in list(stage.queue):
+                jobs_detail.append({
+                    "job_id":  getattr(req, "job_id", None),
+                    "product": getattr(req, "product", None),
+                    "stage":   j + 1,
+                    "status":  "queue",
+                })
+            for req in list(stage.users):
+                jobs_detail.append({
+                    "job_id":  getattr(req, "job_id", None),
+                    "product": getattr(req, "product", None),
+                    "stage":   j + 1,
+                    "status":  "service",
+                })
+
         return {
             "sim_time"     : round(t, 2),
             "sim_time_pct" : round((t-self.warmup)/self.sim_time*100, 1),
@@ -286,6 +317,7 @@ class LiveSimulation:
             "total_revenue"     : round(sum(self.revenue.values()), 0),
             "total_done"        : sum(self.n_done.values()),
             "policy"            : self.policy,
+            "jobs_detail"       : jobs_detail,   # ADDITIVE, new key only
         }
 
     def run(self) -> dict:

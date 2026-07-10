@@ -55,6 +55,7 @@ import random
 import importlib
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
+from collections import defaultdict
 
 import numpy as np
 import plotly.graph_objects as go
@@ -201,45 +202,67 @@ class DemoSimulator:
 
 def _convert_live_snapshot(raw: dict, products: List[dict]) -> dict:
     """
-    Adapter: live_simulation.py's LiveSimulation snapshots are AGGREGATE
-    KPI counts per stage (busy/idle/queue), not individual job positions —
-    it doesn't track per-job identity at snapshot time. This adapter
-    approximates a per-job visual from those aggregate counts:
-      - machines: first `busy` server slots per stage shown red, rest green
-                  (slot *assignment* is a display approximation only)
-      - jobs in queue/service: one dot per unit, colored by round-robin
-                       over product types weighted by each product's rho
-                       (share of system load) — approximate, not exact
-                       per-job product identity
-    For exact per-job dots, live_simulation.py would need a small patch to
-    log (job_id, product, stage, status) per snapshot — flagged as a
-    possible future enhancement, not done here to avoid touching your
-    validated simulation core.
+    Adapter: converts a LiveSimulation snapshot into animation frame format.
+
+    EXACT MODE (live_simulation.py v1.1+, has "jobs_detail"):
+      Uses the real per-job (job_id, product, stage, status) records
+      tagged directly on each SimPy Request object — no approximation.
+
+    FALLBACK MODE (older snapshots without "jobs_detail"):
+      Approximates per-job product identity via round-robin weighted by
+      each product's rho (share of system load) — kept only for backward
+      compatibility with snapshots taken before the live_simulation.py
+      per-job patch.
     """
     x_lane = {1: 0.0, 2: 3.0, 3: 6.0}
-    weights = [max(p.get("rho", 0.1), 0.05) for p in products]
-    names = [p["type"] for p in products]
+    MAX_DOTS = 25  # cap rendered dots/stage; true count kept in queue_len
 
-    machines_out, jobs_out, queue_len = [], [], {}
+    machines_out, queue_len = [], {}
     for s in raw["stage_status"]:
         stage = s["stage"]
         for i in range(s["S"]):
             machines_out.append({"stage": stage, "server_id": i,
                                   "status": "busy" if i < s["busy"] else "idle"})
         queue_len[stage] = s["queue"]
-        MAX_DOTS = 25  # cap rendered dots/stage; true count kept in queue_len
-        for k in range(min(s["queue"], MAX_DOTS)):
-            pname = random.choices(names, weights=weights, k=1)[0]
-            jobs_out.append({
-                "job_id": f"S{stage}Q{k}", "product": pname, "stage": stage,
-                "status": "queue", "x": x_lane[stage] - 0.8, "y": k * 0.4,
-            })
-        for slot in range(s["busy"]):
-            pname = random.choices(names, weights=weights, k=1)[0]
-            jobs_out.append({
-                "job_id": f"S{stage}B{slot}", "product": pname, "stage": stage,
-                "status": "service", "x": x_lane[stage] + 0.6, "y": slot + 0.5,
-            })
+
+    jobs_out = []
+    if raw.get("jobs_detail"):
+        # EXACT: real job identity, grouped per stage/status for layout
+        by_key = defaultdict(list)
+        for j in raw["jobs_detail"]:
+            by_key[(j["stage"], j["status"])].append(j)
+        for stage in x_lane:
+            q_jobs = by_key.get((stage, "queue"), [])
+            for k, j in enumerate(q_jobs[:MAX_DOTS]):
+                jobs_out.append({
+                    "job_id": j["job_id"], "product": j["product"], "stage": stage,
+                    "status": "queue", "x": x_lane[stage] - 0.8, "y": k * 0.4,
+                })
+            s_jobs = by_key.get((stage, "service"), [])
+            for slot, j in enumerate(s_jobs):
+                jobs_out.append({
+                    "job_id": j["job_id"], "product": j["product"], "stage": stage,
+                    "status": "service", "x": x_lane[stage] + 0.6, "y": slot + 0.5,
+                })
+    else:
+        # FALLBACK: ρ-weighted approximation (legacy snapshots only)
+        weights = [max(p.get("rho", 0.1), 0.05) for p in products]
+        names = [p["type"] for p in products]
+        for s in raw["stage_status"]:
+            stage = s["stage"]
+            for k in range(min(s["queue"], MAX_DOTS)):
+                pname = random.choices(names, weights=weights, k=1)[0]
+                jobs_out.append({
+                    "job_id": f"S{stage}Q{k}", "product": pname, "stage": stage,
+                    "status": "queue", "x": x_lane[stage] - 0.8, "y": k * 0.4,
+                })
+            for slot in range(s["busy"]):
+                pname = random.choices(names, weights=weights, k=1)[0]
+                jobs_out.append({
+                    "job_id": f"S{stage}B{slot}", "product": pname, "stage": stage,
+                    "status": "service", "x": x_lane[stage] + 0.6, "y": slot + 0.5,
+                })
+
     return {"t": raw["sim_time"], "jobs": jobs_out, "machines": machines_out,
             "queue_len": queue_len}
 
