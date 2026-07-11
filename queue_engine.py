@@ -370,7 +370,62 @@ def MGamma1(lam: float, mu: float, beta: float) -> Optional[dict]:
                   "CoV2":round(1.0/beta,4)})
     return r
 
-def GIM1_priority(lam: float, mu: float) -> dict:
+def MEkS_approx(lam: float, mu: float, S: int, k: int = None,
+                 CoV2: float = None) -> Optional[dict]:
+    """
+    Model 16b — M/Ek/S (approx): multi-server Erlang-k / Gamma service,
+    via the Allen-Cunneen approximation:
+
+        Wq(G/G/S) ≈ [(Ca² + Cs²) / 2] × Wq(M/M/S)
+
+    where Ca²=1 (Poisson arrivals) and Cs²=1/k (Erlang-k service SCV).
+
+    ADDITIVE — fills a real gap: MEk1/MGamma1 above are single-server
+    only (built on the M/G/1 Pollaczek-Khinchine formula via MG1()).
+    Our 3-stage job shop has S=[5,3,5] servers per stage, so a genuine
+    multi-server Erlang model is needed. This is a standard, widely-used
+    textbook approximation (Allen 1990 / Cunneen), not a novel formula —
+    exact where k=1 (reduces to M/M/S exactly, verified below), and a
+    good approximation for k>1.
+
+    Args:
+        lam  : arrival rate λ
+        mu   : service rate μ (1/mean service time)
+        S    : parallel servers
+        k    : Erlang shape (integer). Provide EITHER k OR CoV2, not both.
+        CoV2 : service-time squared coefficient of variation (=1/k for
+               Erlang-k, general for Gamma). If provided, overrides k.
+
+    Validation: at k=1 (CoV2=1), Wq/Lq must exactly equal MMS()'s values
+    (Erlang-1 = Exponential = M/M/S) — this is checked in run_validation().
+    """
+    if CoV2 is None:
+        if k is None or k < 1:
+            return None
+        CoV2 = 1.0 / k
+    base = queue_metrics(lam, mu, S)
+    if base is None:
+        return None
+
+    correction = (1.0 + CoV2) / 2.0   # Ca²=1, so (Ca²+Cs²)/2 = (1+CoV2)/2
+    Wq_approx = base["Wq"] * correction
+    Lq_approx = Wq_approx * base["lam_eff"]
+    Ws_approx = Wq_approx + 1.0 / mu
+    Ls_approx = Lq_approx + base["a"]
+
+    label = f"M/E{k}/{S} (approx)" if k else f"M/Gamma/{S} (approx, CoV2={CoV2:.3f})"
+    return {
+        "model": label, "lam": lam, "mu": mu, "S": S,
+        "k": k, "CoV2": round(CoV2, 4),
+        "rho": base["rho"], "a": base["a"],
+        "Lq": round(Lq_approx, 4), "Ls": round(Ls_approx, 4),
+        "Wq": round(Wq_approx, 4), "Ws": round(Ws_approx, 4),
+        "Wq_MMS_baseline": base["Wq"],   # for transparency: what pure M/M/S gave
+        "correction_factor": round(correction, 4),
+    }
+
+
+
     """
     Model 19 — GI/M/1 priority.
     Validation: Wq=1/lam, Ws=Wq+1/mu (Tables 15,16) ✓

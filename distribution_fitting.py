@@ -211,6 +211,50 @@ def compute_mu_stages(total_hrs: float,
     }
 
 
+def compute_mu_stages_parts(total_hrs: float,
+                             avg_part_time: float,
+                             ratios: List[float] = None,
+                             manual_hrs: List[float] = None) -> dict:
+    """
+    ADDITIVE extension of compute_mu_stages() for part-level granularity
+    (per Mohamed's clarification, Session 8): a product's total_hrs isn't
+    one long operation — it's the SUM of many small part operations
+    (~0.1-0.2hr each). Summing many small i.i.d. operations concentrates
+    around the mean (lower variance than a single Exponential draw),
+    which is exactly what an Erlang-k distribution models: Erlang-k =
+    sum of k i.i.d. Exponential phases, CoV² = 1/k.
+
+    This function derives k PER STAGE from how many part-operations fit
+    into that stage's time budget, so the fitted service-time
+    distribution reflects real part-level granularity instead of
+    treating the whole stage time as one Exponential draw.
+
+    Args:
+        total_hrs      : total time for the product across all stages [hr]
+        avg_part_time  : average time per individual part operation [hr]
+                         (thesis reference: ~0.1-0.2 hr)
+        ratios, manual_hrs : same as compute_mu_stages()
+
+    Returns: same structure as compute_mu_stages(), with each stage dict
+    additionally carrying "k" (Erlang shape, >=1) and "CoV2" (=1/k).
+    """
+    base = compute_mu_stages(total_hrs, ratios=ratios, manual_hrs=manual_hrs)
+    if avg_part_time is None or avg_part_time <= 0:
+        # No part-level data given: fall back to k=1 (Exponential, CoV2=1)
+        for s in base["stages"]:
+            s["k"], s["CoV2"] = 1, 1.0
+        base["avg_part_time"] = None
+        return base
+
+    for s in base["stages"]:
+        k = max(1, round(s["service_time"] / avg_part_time))
+        s["k"] = k
+        s["CoV2"] = round(1.0 / k, 4)
+    base["avg_part_time"] = avg_part_time
+    return base
+
+
+
 def compute_mu_batch(products: List[dict],
                      ratios: List[float] = None) -> List[dict]:
     """Compute stage μ for all products."""

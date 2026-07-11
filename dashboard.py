@@ -113,6 +113,63 @@ def get_stage_mu(total_hrs, stage_idx):
     return 1.0/st_j if st_j > 0 else 1.0
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GLOBAL PRODUCT SOURCE (Option E) — shared helpers
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab 9 Step 4 writes st.session_state["global_products"] in its own schema
+# (per-stage mu/k list). Tabs 1-8/10 default to the built-in 6-product case
+# study (PRODUCTS_EXP/PRODUCTS_ACTUAL) and only switch to Tab 9's fitted set
+# if the user explicitly opts in via product_source_selector() below.
+# ADDITIVE: no tab's default behavior changes unless the user toggles it.
+
+def has_global_products() -> bool:
+    return bool(st.session_state.get("global_products"))
+
+def global_products_as_flat(stage_idx: int = None) -> list:
+    """
+    Converts Tab 9's global_products schema into the flat
+    {"type","lam","mu","rho","total_hrs"} schema that PRODUCTS_EXP /
+    PRODUCTS_ACTUAL already use, so existing tab code can consume either
+    source through the same field names without a rewrite.
+
+    stage_idx: if given (0,1,2), "mu" is that stage's rate. If None,
+    "mu" is mu_overall (Table 4.9 style — matches PRODUCTS_EXP/ACTUAL's
+    own "mu" meaning, per CL-6/CL-10).
+    """
+    out = []
+    for p in st.session_state.get("global_products", []):
+        if stage_idx is not None and stage_idx < len(p["stages"]):
+            mu = p["stages"][stage_idx]["mu"]
+        else:
+            mu = p["mu_overall"]
+        out.append({
+            "type": p["type"], "lam": p["lam"], "mu": mu,
+            "rho": p["rho"], "total_hrs": p["total_hrs"],
+            "k_stages": [s.get("k", 1) for s in p["stages"]],
+        })
+    return out
+
+def product_source_selector(key_prefix: str, stage_idx: int = None,
+                             default_products: list = None) -> tuple:
+    """
+    Renders the "Product data source" radio (only shows the Tab-9-fitted
+    option if it actually exists yet) and returns (products_list, source_label).
+    Call this INSTEAD OF hardcoding `prod = PRODUCTS_EXP if ... else PRODUCTS_ACTUAL`.
+    """
+    options = ["Built-in Case Study (6 products)"]
+    if has_global_products():
+        n = len(st.session_state["global_products"])
+        options.append(f"Tab 9 Fitted Products ({n})")
+    else:
+        st.caption("ℹ️ Run Step 4 in Tab 9 to unlock a fitted product source here.")
+
+    choice = st.radio("Product data source", options,
+                       horizontal=True, key=f"{key_prefix}_src")
+
+    if "Tab 9" in choice:
+        return global_products_as_flat(stage_idx), "Tab 9 Fitted"
+    return (default_products or PRODUCTS_EXP), "Built-in"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # SIDEBAR
 # ─────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -416,10 +473,21 @@ with tab4:
     st.header("🔬 Case Study — 6 Products × 3 Stages")
     st.caption("CL-12: Products flow through 3 machine groups in series")
 
-    mode4 = st.radio("Data mode",
-        ["Experimental (Table 4.9)","Actual MPS (Tables 4.5-4.8)"],
-        horizontal=True)
-    prod4 = PRODUCTS_EXP if "Exp" in mode4 else PRODUCTS_ACTUAL
+    src4, src4_label = product_source_selector("t4", stage_idx=1)  # Stage 2 mu for the metrics below
+    if src4_label == "Built-in":
+        mode4 = st.radio("Data mode",
+            ["Experimental (Table 4.9)","Actual MPS (Tables 4.5-4.8)"],
+            horizontal=True, key="mode4")
+        prod4 = PRODUCTS_EXP if "Exp" in mode4 else PRODUCTS_ACTUAL
+        mode4_short = "Experimental" if "Exp" in mode4 else "Actual MPS"
+        mode4_desc = ("Experimental Table 4.9 (design target)" if "Exp" in mode4
+                      else "Actual MPS (current rates ≤1 u/hr)")
+    else:
+        prod4 = src4
+        mode4_short = "Tab 9 Fitted"
+        mode4_desc = "Tab 9 Fitted Products"
+        st.caption(f"Using {len(prod4)} products fitted in Tab 9 "
+                   f"(Stage 2 μ shown below)")
     T4    = st.slider("T [hr]", 0.1, 1.0, 0.2, 0.1)
 
     # ── Top metrics ────────────────────────────────────────────────
@@ -428,7 +496,7 @@ with tab4:
 
     m1,m2,m3,m4 = st.columns(4)
     m1.metric("Total System ρ", f"{total_rho4:.3f}",
-              delta="Experimental" if "Exp" in mode4 else "Actual MPS")
+              delta=mode4_short)
     m2.metric("Bottleneck Product", bn4["type"],
               delta=f"ρ={bn4['rho']:.3f}")
     m3.metric("Bottleneck Stage", "Stage 2 — Punching",
@@ -538,7 +606,7 @@ with tab4:
     | Bottleneck stage | **Stage 2 — Punching** (S=3, CL-12) |
     | Capacity expansion | Add shifts (1→2→3), NOT more servers (CL-11 Point 3) |
     | Service policy | Exhaustive or Gated (CL-11 Point 2) |
-    | λ source | {'Experimental Table 4.9 (design target)' if 'Exp' in mode4 else 'Actual MPS (current rates ≤1 u/hr)'} |
+    | λ source | {mode4_desc} |
     """)
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1159,7 +1227,7 @@ with tab9:
     # Import fitting engine
     try:
         from distribution_fitting import (
-            compute_lambda, compute_mu_stages,
+            compute_lambda, compute_mu_stages, compute_mu_stages_parts,
             compute_cost_simple, compute_cost_detailed,
             compute_F1_curve, fit_arrivals, fit_service,
             run_fitting_pipeline, export_to_dashboard,
@@ -1246,11 +1314,33 @@ with tab9:
             st.info(f"Stage 3 ratio (Bending): {r3_9:.2f} (auto)")
             ratios9 = [r1_9, r2_9, r3_9]
 
+            st.divider()
+            use_parts9 = st.checkbox(
+                "Use part-level granularity (Erlang-k)", value=False,
+                key="parts9",
+                help="A product's total_hrs is really the sum of many "
+                     "small part operations (~0.1-0.2hr each), not one "
+                     "big draw. Enabling this fits an Erlang-k "
+                     "distribution per stage instead of assuming "
+                     "Exponential — lower variance, more realistic "
+                     "queueing behavior.")
+            avg_part9 = None
+            if use_parts9:
+                avg_part9 = st.number_input(
+                    "Avg time per part [hr]", 0.01, 5.0, 0.15, 0.01,
+                    key="apt9")
+
         with c4:
             st.markdown("**Per-stage service rates:**")
             mu_rows = []
             for p in prod_inputs:
-                mu_d = compute_mu_stages(p["total_hrs"], ratios9)
+                if use_parts9:
+                    mu_d = compute_mu_stages_parts(
+                        p["total_hrs"], avg_part_time=avg_part9,
+                        ratios=ratios9)
+                else:
+                    mu_d = compute_mu_stages(p["total_hrs"], ratios9)
+                p["mu_stages_data"] = mu_d   # carried into Step 4 below
                 for s in mu_d["stages"]:
                     mu_rows.append({
                         "Product"    : p["name"],
@@ -1258,12 +1348,20 @@ with tab9:
                         "St [hr/u]"  : round(s["service_time"],2),
                         "μ [u/hr]"   : round(s["mu"],5),
                         "Ratio"      : s["ratio"],
+                        **({"k (Erlang)": s["k"], "CoV²": s["CoV2"]}
+                           if use_parts9 else {}),
                     })
             if mu_rows:
                 st.dataframe(pd.DataFrame(mu_rows),
                     hide_index=True, use_container_width=True)
             st.caption("Stage 2 (Punching) = longest service time "
                        "→ potential bottleneck ✓")
+            if use_parts9:
+                st.caption(f"ℹ️ Part-level mode: k=hundreds typically "
+                           f"expected (many small ~{avg_part9}hr parts "
+                           f"summing to the total) → low CoV² → less "
+                           f"variable, more predictable service times "
+                           f"than a single Exponential draw would give.")
 
         st.divider()
 
@@ -1407,19 +1505,70 @@ with tab9:
 
             exported9 = export_to_dashboard(result9)
 
-            st.success("✅ Fitting complete! Parameters ready for all tabs.")
-            st.markdown("**Fitted Parameters:**")
-            fit_rows = []
-            for name, vals in exported9.items():
-                fit_rows.append({
-                    "Product"  : name,
-                    "λ [u/hr]" : vals["lam"],
-                    "μ [u/hr]" : vals["mu"],
-                    "ρ"        : vals["rho"],
-                    "NR [$/u]" : vals["NR"],
-                    "Model"    : vals["model"],
-                    "Stable"   : "✅" if vals["stable"] else "⚠️",
+            # ── ADDITIVE (Option E): actually write global_products to
+            # session_state, using the part-level mu_stages_data (with k)
+            # computed in Step 2 if part-level mode was enabled. This is
+            # the real fix for Step 4's button text, which previously
+            # claimed "exports to all tabs" but only showed a table+CSV.
+            global_products = []
+            for p in prod_inputs:
+                mu_d = p.get("mu_stages_data") or compute_mu_stages(
+                    p["total_hrs"], ratios9)
+                vals = exported9.get(p["name"], {})
+                global_products.append({
+                    "type"      : p["name"],
+                    "lam"       : vals.get("lam", 0.0),
+                    "total_hrs" : p["total_hrs"],
+                    "stage_ratios": ratios9,
+                    "stages"    : [
+                        {"stage": s["stage"], "mu": s["mu"],
+                         "k": s.get("k", 1), "CoV2": s.get("CoV2", 1.0)}
+                        for s in mu_d["stages"]
+                    ],
+                    "mu_overall": mu_d["mu_overall"],
+                    "SP"        : vals.get("SP",
+                                    next((c["SP"] for c in cost_rows
+                                          if c["Product"]==p["name"]), 0)),
+                    "NR"        : vals.get("NR", 0.0),
+                    "rho"       : vals.get("rho", 0.0),
+                    "model"     : vals.get("model", "M/M/S"),
+                    "stable"    : vals.get("stable", True),
+                    "part_level": use_parts9,
                 })
+            st.session_state["global_products"] = global_products
+            st.session_state["global_products_meta"] = {
+                "n_shifts": shifts9, "period": period9,
+                "avg_part_time": avg_part9 if use_parts9 else None,
+                "fitted_at": pd.Timestamp.now().isoformat(),
+            }
+            # Rerun immediately so every tab's "Product data source" toggle
+            # (which checks session_state at the TOP of the script, before
+            # Tab 9 runs) reflects the new fit right away instead of only
+            # appearing after the user's next unrelated interaction.
+            st.rerun()
+
+        # ── Persistent results display — reads from session_state, so it
+        # survives the st.rerun() above and shows the LAST fit any time
+        # this tab is viewed, not just in the single instant of the click.
+        if st.session_state.get("global_products"):
+            gp9 = st.session_state["global_products"]
+            meta9 = st.session_state.get("global_products_meta", {})
+            st.success(f"✅ {len(gp9)} products fitted"
+                       + (f" ({meta9['fitted_at'][:19]})" if meta9.get("fitted_at") else "")
+                       + " — the 'Product data source' toggle in other tabs "
+                         "can now use this fitted set instead of the "
+                         "built-in 6-product case study.")
+            st.markdown("**Fitted Parameters:**")
+            fit_rows = [{
+                "Product"  : p["type"],
+                "λ [u/hr]" : p["lam"],
+                "μ [u/hr]" : p["mu_overall"],
+                "ρ"        : p["rho"],
+                "NR [$/u]" : p["NR"],
+                "Model"    : p["model"],
+                "Stable"   : "✅" if p["stable"] else "⚠️",
+                **({"k (Stage2)": p["stages"][1]["k"]} if p.get("part_level") else {}),
+            } for p in gp9]
             st.dataframe(pd.DataFrame(fit_rows),
                 hide_index=True, use_container_width=True)
 
@@ -1440,10 +1589,20 @@ with tab9:
                 file_name="fitted_parameters.csv",
                 mime="text/csv")
 
-            st.info("💡 These fitted λ and μ values can now be used "
-                    "in all other tabs. Copy them into the queue "
-                    "analysis, capacity planning, or simulation tabs.")
-        elif not fit_btn9:
+            st.info("💡 Look for the **'Product data source'** toggle at "
+                    "the top of Tab 4 to use this fitted set instead of "
+                    "the built-in 6-product case study. (More tabs get "
+                    "this toggle in upcoming sessions — see the abstract "
+                    "for progress.)")
+
+            if st.button("🗑️ Clear fitted products (revert all tabs to built-in)",
+                         key="clear_gp9"):
+                del st.session_state["global_products"]
+                if "global_products_meta" in st.session_state:
+                    del st.session_state["global_products_meta"]
+                st.rerun()
+
+        if not fit_btn9 and not st.session_state.get("global_products"):
             st.markdown("""
             **What Step 4 does:**
             - Fits **Poisson distribution** to arrival data → λ
