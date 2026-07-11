@@ -850,6 +850,13 @@ with tab7:
                 100, 3000, 1000, 100, key="st7")
             seed7    = st.number_input("Random seed",
                 1, 999, 42, key="sd7")
+            renege_T7 = st.slider(
+                "Patience T [hr] (Eq 3.8 reneging)",
+                0.1, 5.0, 1.0, 0.1, key="rt7",
+                help="A job waiting longer than this at any stage abandons "
+                     "the queue and leaves the system. Typical service "
+                     "contexts: 0.1-1.0hr. Production contexts can "
+                     "reasonably exceed 1hr.")
 
             st.divider()
             st.markdown("**Server Config (CL-12):**")
@@ -871,7 +878,7 @@ with tab7:
                         n_shifts=n_sh7, sim_time=sim_t7,
                         warmup=sim_t7//10,
                         snapshot_interval=sim_t7//10,
-                        seed=int(seed7))
+                        seed=int(seed7), renege_T=renege_T7)
                     r7 = sim7.run()
 
                 # Top metrics
@@ -1491,6 +1498,11 @@ with tab10:
             speed10 = st.select_slider("Playback speed",
                 options=["0.5x", "1x", "2x", "4x"], value="1x", key="sp10")
             speed_ms10 = {"0.5x": 600, "1x": 300, "2x": 150, "4x": 75}[speed10]
+            renege_T10 = st.slider(
+                "Patience T [hr] (Eq 3.8 reneging)",
+                0.1, 5.0, 1.0, 0.1, key="rt10",
+                help="A job waiting longer than this at any stage abandons "
+                     "the queue and leaves the system.")
 
             st.divider()
             st.markdown("**Server Config (CL-12):**")
@@ -1499,10 +1511,14 @@ with tab10:
                 sv = st.slider(f"S{j+1} {nm}", 1, 10, df, key=f"s10_{j}")
                 S10.append(sv)
 
-            st.caption("⚠️ At the default S=[5,3,5], Stages 1–2 run near/at "
-                       "ρ=1.0 with either product set — queues grow without "
-                       "bound past the break-even point (see Facilitation "
-                       "note #4). Dots per stage are capped at 25 for "
+            st.caption("ℹ️ At S=[5,3,5], queues now stay bounded (jobs that "
+                       "wait past the patience time T above abandon the "
+                       "queue — Eq 3.8). But most demand is still lost: "
+                       "at T=1.0hr, roughly 90%+ of arrivals renege before "
+                       "being served under either product set — this is a "
+                       "genuine capacity shortfall, not a display issue. "
+                       "See Tab 7 (Live Simulation) for per-product renege "
+                       "rates. Dots per stage are capped at 25 for "
                        "readability; the true queue count is still shown.")
 
             run10 = st.button("▶ GENERATE ANIMATION", type="primary", key="run10")
@@ -1514,7 +1530,7 @@ with tab10:
                         S_stages=S10, policy=policy10, n_shifts=n_sh10,
                         sim_time=sim_t10, warmup=max(sim_t10 // 10, 5),
                         snapshot_interval=max(sim_t10 // 40, 5),
-                        product_mode=mode10,
+                        product_mode=mode10, renege_T=renege_T10,
                     )
                     prod_names10 = get_product_names(mode10)
                     cfg10 = build_cfg_for_run(S10, prod_names10)

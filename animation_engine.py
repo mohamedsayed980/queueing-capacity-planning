@@ -301,7 +301,8 @@ def build_cfg_for_run(S_stages: List[int], product_names: List[str]) -> SimConfi
 
 def load_snapshots_from_live(S_stages=None, policy="exhaustive", n_shifts=1,
                               sim_time=1500, warmup=150, snapshot_interval=50,
-                              seed=42, product_mode="Experimental") -> List[dict]:
+                              seed=42, product_mode="Experimental",
+                              renege_T=1.0) -> List[dict]:
     """
     Real integration path: runs your actual live_simulation.LiveSimulation
     and converts its aggregate KPI snapshots into animation frames.
@@ -312,7 +313,7 @@ def load_snapshots_from_live(S_stages=None, policy="exhaustive", n_shifts=1,
     sim = live.LiveSimulation(
         products, S_stages=S_stages or live.S_DEFAULT, policy=policy,
         n_shifts=n_shifts, sim_time=sim_time, warmup=warmup,
-        snapshot_interval=snapshot_interval, seed=seed,
+        snapshot_interval=snapshot_interval, seed=seed, renege_T=renege_T,
     )
     result = sim.run()
     return [_convert_live_snapshot(s, products) for s in result["snapshots"]]

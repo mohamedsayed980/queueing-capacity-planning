@@ -115,7 +115,8 @@ class LiveSimulation:
                  sim_time:          float       = 2000,
                  warmup:            float       = 200,
                  snapshot_interval: float       = 50,
-                 seed:              int         = 42):
+                 seed:              int         = 42,
+                 renege_T:          float       = 1.0):
         """
         Args:
             products          : list of product dicts (lam, mu, total_hrs, NR)
@@ -127,6 +128,18 @@ class LiveSimulation:
             warmup            : warm-up period to discard [hr]
             snapshot_interval : KPI snapshot every N hours
             seed              : random seed
+            renege_T : patience/reneging time [hr] (Eq 3.8's T). A job that
+                waits longer than this at ANY stage abandons the queue and
+                leaves the system (matches Eq 3.8's finite-patience model —
+                without this, an M/M/S/inf queue diverges under overload,
+                which is exactly what was observed before this parameter
+                existed). Typical service-context values run 0.1-1.0 hr
+                (keeps human customers from walking away); production
+                contexts can reasonably exceed 1 hr. Default=1.0 hr is the
+                boundary between those two regimes, chosen as a general-
+                purpose starting point per Mohamed's guidance (Session 7) —
+                override per scenario via this parameter or the dashboard
+                slider (Tab 7 / Tab 10).
         """
         self.products          = products
         self.S_stages          = S_stages or S_DEFAULT
@@ -137,6 +150,7 @@ class LiveSimulation:
         self.warmup            = warmup
         self.snap_interval     = snapshot_interval
         self.seed              = seed
+        self.renege_T          = renege_T
 
         # Adjust λ for shifts
         self.products_adj = []
@@ -163,6 +177,8 @@ class LiveSimulation:
         self.queue_obs     = defaultdict(list)   # stage → [queue lengths]
         self.busy_obs      = defaultdict(list)   # stage → [busy counts]
         self.revenue       = defaultdict(float)  # ptype → revenue earned
+        self.n_reneged       = defaultdict(int)  # ptype → reneged count
+        self.n_reneged_stage = defaultdict(int)  # (ptype,stage) → reneged count
         self._job_seq      = 0          # ADDITIVE: unique per-job id counter
 
     def _job_process(self, env, stages, prod, is_warmup_fn):
@@ -193,7 +209,22 @@ class LiveSimulation:
             req.product = ptype
             req.stage   = j + 1
             with req:
-                yield req
+                # ADDITIVE (Eq 3.8): finite patience. A job that waits
+                # longer than renege_T at this stage abandons the queue
+                # rather than waiting forever — matches the analytical
+                # model's λ** (effective arrival rate), which was always
+                # bounded by reneging even though the DES previously had
+                # no such mechanism.
+                renege_evt = env.timeout(self.renege_T)
+                result = yield req | renege_evt
+                if req not in result:
+                    # Reneged at this stage: leaves the system entirely.
+                    # Not counted as done, no revenue (matches a lost sale).
+                    if not is_warmup_fn(env.now):
+                        self.n_reneged[ptype] += 1
+                        self.n_reneged_stage[(ptype, j)] += 1
+                    return
+
                 wait_j = env.now - t_arrive_j
                 # Exponential service with mean = stage_time[j]
                 mean_st = stage_tms[j]
@@ -266,11 +297,19 @@ class LiveSimulation:
             ld_list  = self.leads[ptype]
             lead     = sum(ld_list)/len(ld_list) if ld_list else 0.0
 
+            n_arr = self.n_arrived[ptype]
+            n_ren = self.n_reneged[ptype]
+            elapsed = max(t - self.warmup, 0.001)
+            lam_eff_measured = round((n_arr - n_ren) / elapsed, 4)
+
             product_kpis.append({
                 "type"       : ptype,
                 "rho"        : round(p["lam"]/p["mu"], 3),
                 "n_done"     : self.n_done[ptype],
-                "n_arrived"  : self.n_arrived[ptype],
+                "n_arrived"  : n_arr,
+                "n_reneged"  : n_ren,   # ADDITIVE (Eq 3.8 patience model)
+                "renege_pct" : round(100*n_ren/n_arr, 1) if n_arr else 0.0,
+                "lam_eff_measured": lam_eff_measured,  # compare vs analytical λ**
                 "stage_Wq"   : [round(w, 3) for w in wq_list],
                 "total_Wq"   : round(total_wq, 3),
                 "lead_time"  : round(lead, 3),
@@ -372,6 +411,20 @@ class LiveSimulation:
                                       self.S_stages[j])
                 anal_stage.append(a)
 
+            n_ren = self.n_reneged[ptype]
+            lam_eff_measured = round((self.n_arrived[ptype] - n_ren) /
+                                      max(self.sim_time, 1), 4)
+
+            # Eq 3.8 analytical lambda** per stage, for direct comparison
+            # against the DES's measured effective arrival rate above
+            lam_star_stages = []
+            for j in range(3):
+                st_j = p["total_hrs"] * self.stage_ratios[j]
+                mu_j = 1.0/st_j if st_j > 0 else 1
+                Cs   = self.S_stages[j] * mu_j
+                lam_star = (2.0*self.renege_T*Cs**2) / (1.0 + 2.0*self.renege_T*Cs)
+                lam_star_stages.append(round(lam_star, 4))
+
             product_results.append({
                 "type"         : ptype,
                 "lam"          : p["lam"],
@@ -380,6 +433,11 @@ class LiveSimulation:
                 "rho"          : round(p["lam"]/p["mu"], 3),
                 "n_done"       : self.n_done[ptype],
                 "n_arrived"    : self.n_arrived[ptype],
+                "n_reneged"    : n_ren,                    # ADDITIVE
+                "renege_pct"   : round(100*n_ren/self.n_arrived[ptype], 1)
+                                 if self.n_arrived[ptype] else 0.0,
+                "lam_eff_measured": lam_eff_measured,       # ADDITIVE
+                "lam_star_analytical_per_stage": lam_star_stages,  # ADDITIVE (Eq 3.8)
                 "stage_Wq_sim" : stage_Wq,
                 "stage_Ws_sim" : stage_Ws,
                 "total_Wq_sim" : total_Wq,
@@ -418,6 +476,7 @@ class LiveSimulation:
                 "sim_time"  : self.sim_time,
                 "warmup"    : self.warmup,
                 "seed"      : self.seed,
+                "renege_T"  : self.renege_T,
             },
             "products"          : product_results,
             "stages"            : stage_final,
