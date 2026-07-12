@@ -390,9 +390,14 @@ with tab3:
     c1, c2 = st.columns([1, 2])
     with c1:
         st.subheader("Schedule Settings")
-        lam_mode3 = st.radio("λ Source",
-            ["Experimental (Table 4.9)","Actual MPS (Tables 4.5-4.8)"])
-        prod_src3 = PRODUCTS_EXP if "Exp" in lam_mode3 else PRODUCTS_ACTUAL
+        src3, src3_label = product_source_selector("t3")
+        if src3_label == "Built-in":
+            lam_mode3 = st.radio("λ Source",
+                ["Experimental (Table 4.9)","Actual MPS (Tables 4.5-4.8)"])
+            prod_src3 = PRODUCTS_EXP if "Exp" in lam_mode3 else PRODUCTS_ACTUAL
+        else:
+            prod_src3 = src3
+            st.caption(f"Using {len(prod_src3)} products fitted in Tab 9")
 
         selected3 = st.multiselect("Products this month",
             [p["type"] for p in prod_src3],
@@ -627,8 +632,13 @@ with tab5:
     c1, c2 = st.columns([1, 2])
     with c1:
         st.subheader("⚙️ System Parameters")
-        mode5 = st.radio("λ Source", ["Experimental","Actual MPS"], key="mode5")
-        prod5_src = PRODUCTS_EXP if mode5=="Experimental" else PRODUCTS_ACTUAL
+        src5, src5_label = product_source_selector("t5")
+        if src5_label == "Built-in":
+            mode5 = st.radio("λ Source", ["Experimental","Actual MPS"], key="mode5")
+            prod5_src = PRODUCTS_EXP if mode5=="Experimental" else PRODUCTS_ACTUAL
+        else:
+            prod5_src = src5
+            st.caption(f"Using {len(prod5_src)} products fitted in Tab 9")
         prod5_sel = st.selectbox("Product",
             [p["type"] for p in prod5_src], key="prod5")
         prod5 = next(p for p in prod5_src if p["type"]==prod5_sel)
@@ -753,16 +763,22 @@ with tab6:
     c1, c2 = st.columns([1, 2])
     with c1:
         st.subheader("⚙️ System Configuration")
-        mode6   = st.radio("λ Source",
-            ["Experimental","Actual MPS"], key="mode6")
+        src6, src6_label = product_source_selector("t6")
+        if src6_label == "Built-in":
+            mode6   = st.radio("λ Source",
+                ["Experimental","Actual MPS"], key="mode6")
+            prod6_src = PRODUCTS_EXP if mode6=="Experimental" else PRODUCTS_ACTUAL
+            mode6_short = mode6
+        else:
+            prod6_src = src6
+            mode6_short = "Tab 9 Fitted"
+            st.caption(f"Using {len(prod6_src)} products fitted in Tab 9")
         policy6 = st.radio("Service Policy",
             ["Exhaustive","Gated"], key="pol6",
             help="Exhaustive: serve until empty. Gated: serve only queued at poll start.")
         n_sh6   = st.selectbox("Shifts per day", [1,2,3], key="sh6")
         alpha6  = st.slider("Rejection rate α (CL Assumption 6)",
             0.0, 0.3, 0.0, 0.01, key="alp6")
-
-        prod6_src = PRODUCTS_EXP if mode6=="Experimental" else PRODUCTS_ACTUAL
 
         # Server config (CL-12)
         st.markdown("**Server configuration (CL-12 machine groups):**")
@@ -875,7 +891,7 @@ with tab6:
     st.markdown(f"""
     | Decision Factor | Value |
     |-----------------|-------|
-    | System load (total ρ) | **{total_rho6:.3f}** ({'Experimental' if mode6=='Experimental' else 'Actual MPS'}) |
+    | System load (total ρ) | **{total_rho6:.3f}** ({mode6_short}) |
     | Service policy | **{policy6}** |
     | Shifts per day | **{n_sh6}** ({n_sh6*8} hrs/day) |
     | Server config | **S=[{S6[0]},{S6[1]},{S6[2]}]** (Cutting/Punching/Bending) |
@@ -909,8 +925,12 @@ with tab7:
         c1, c2 = st.columns([1, 2])
         with c1:
             st.subheader("⚙️ Simulation Config")
-            mode7    = st.radio("λ Source",
-                ["Experimental","Actual MPS"], key="mode7")
+            src7, src7_label = product_source_selector("t7")
+            if src7_label == "Built-in":
+                mode7    = st.radio("λ Source",
+                    ["Experimental","Actual MPS"], key="mode7")
+            else:
+                st.caption(f"Using {len(src7)} products fitted in Tab 9")
             policy7  = st.radio("Service Policy",
                 ["exhaustive","gated"], key="pol7")
             n_sh7    = st.selectbox("Shifts/day", [1,2,3], key="sh7")
@@ -939,7 +959,10 @@ with tab7:
 
         with c2:
             if run7:
-                prod7 = PRODUCTS_EXP if mode7=="Experimental"                         else PRODUCTS_ACTUAL
+                if src7_label == "Built-in":
+                    prod7 = PRODUCTS_EXP if mode7=="Experimental" else PRODUCTS_ACTUAL
+                else:
+                    prod7 = src7  # already carries k_stages via global_products_as_flat()
                 with st.spinner("Running simulation..."):
                     sim7 = LiveSimulation(
                         prod7, S_stages=S7, policy=policy7,
@@ -1083,8 +1106,12 @@ with tab8:
         c1, c2 = st.columns([1, 2])
         with c1:
             st.subheader("🔬 Experiment Design")
-            mode8 = st.radio("λ Source",
-                ["Experimental","Actual MPS"], key="mode8")
+            src8, src8_label = product_source_selector("t8")
+            if src8_label == "Built-in":
+                mode8 = st.radio("λ Source",
+                    ["Experimental","Actual MPS"], key="mode8")
+            else:
+                st.caption(f"Using {len(src8)} products fitted in Tab 9")
             sim_t8 = st.slider("Sim time [hr]",
                 200, 2000, 500, 100, key="st8")
             st.markdown("**Select scenarios to compare:**")
@@ -1098,7 +1125,10 @@ with tab8:
 
         with c2:
             if run8:
-                prod8 = PRODUCTS_EXP if mode8=="Experimental"                         else PRODUCTS_ACTUAL
+                if src8_label == "Built-in":
+                    prod8 = PRODUCTS_EXP if mode8=="Experimental" else PRODUCTS_ACTUAL
+                else:
+                    prod8 = src8
                 scenarios8 = []
                 if sc_base:
                     scenarios8.append({
@@ -1650,7 +1680,11 @@ with tab10:
         c1, c2 = st.columns([1, 2])
         with c1:
             st.subheader("⚙️ Animation Config")
-            mode10 = st.radio("λ Source", ["Experimental", "Actual MPS"], key="mode10")
+            src10, src10_label = product_source_selector("t10")
+            if src10_label == "Built-in":
+                mode10 = st.radio("λ Source", ["Experimental", "Actual MPS"], key="mode10")
+            else:
+                st.caption(f"Using {len(src10)} products fitted in Tab 9")
             policy10 = st.radio("Service Policy", ["exhaustive", "gated"], key="pol10")
             n_sh10 = st.selectbox("Shifts/day", [1, 2, 3], key="sh10")
             sim_t10 = st.slider("Sim time [hr]", 50, 1000, 200, 25, key="st10")
@@ -1685,13 +1719,22 @@ with tab10:
         with c2:
             if run10:
                 with st.spinner("Running simulation and building animation frames..."):
-                    snaps10 = load_snapshots_from_live(
-                        S_stages=S10, policy=policy10, n_shifts=n_sh10,
-                        sim_time=sim_t10, warmup=max(sim_t10 // 10, 5),
-                        snapshot_interval=max(sim_t10 // 40, 5),
-                        product_mode=mode10, renege_T=renege_T10,
-                    )
-                    prod_names10 = get_product_names(mode10)
+                    if src10_label == "Built-in":
+                        snaps10 = load_snapshots_from_live(
+                            S_stages=S10, policy=policy10, n_shifts=n_sh10,
+                            sim_time=sim_t10, warmup=max(sim_t10 // 10, 5),
+                            snapshot_interval=max(sim_t10 // 40, 5),
+                            product_mode=mode10, renege_T=renege_T10,
+                        )
+                        prod_names10 = get_product_names(mode10)
+                    else:
+                        snaps10 = load_snapshots_from_live(
+                            S_stages=S10, policy=policy10, n_shifts=n_sh10,
+                            sim_time=sim_t10, warmup=max(sim_t10 // 10, 5),
+                            snapshot_interval=max(sim_t10 // 40, 5),
+                            products=src10, renege_T=renege_T10,
+                        )
+                        prod_names10 = [p["type"] for p in src10]
                     cfg10 = build_cfg_for_run(S10, prod_names10)
                     fig10 = build_animation_figure(snaps10, cfg10, frame_duration_ms=speed_ms10)
                 st.session_state["tab10_fig"] = fig10

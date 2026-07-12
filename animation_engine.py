@@ -302,14 +302,20 @@ def build_cfg_for_run(S_stages: List[int], product_names: List[str]) -> SimConfi
 def load_snapshots_from_live(S_stages=None, policy="exhaustive", n_shifts=1,
                               sim_time=1500, warmup=150, snapshot_interval=50,
                               seed=42, product_mode="Experimental",
-                              renege_T=1.0) -> List[dict]:
+                              renege_T=1.0, products=None) -> List[dict]:
     """
     Real integration path: runs your actual live_simulation.LiveSimulation
     and converts its aggregate KPI snapshots into animation frames.
+
+    products: if given (e.g. from Tab 9's Global Product Source), used
+    directly instead of looking up PRODUCTS_EXP/PRODUCTS_ACTUAL via
+    product_mode. Each product dict may carry "k_stages" for Erlang-k
+    service sampling (see live_simulation.py's _job_process).
     """
     live = importlib.import_module("live_simulation")
-    products = (live.PRODUCTS_EXP if product_mode == "Experimental"
-                else live.PRODUCTS_ACTUAL)
+    if products is None:
+        products = (live.PRODUCTS_EXP if product_mode == "Experimental"
+                    else live.PRODUCTS_ACTUAL)
     sim = live.LiveSimulation(
         products, S_stages=S_stages or live.S_DEFAULT, policy=policy,
         n_shifts=n_shifts, sim_time=sim_time, warmup=warmup,

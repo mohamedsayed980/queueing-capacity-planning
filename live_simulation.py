@@ -226,9 +226,23 @@ class LiveSimulation:
                     return
 
                 wait_j = env.now - t_arrive_j
-                # Exponential service with mean = stage_time[j]
+                # Service time: Exponential by default (k=1), or Erlang-k
+                # if this product carries part-level k_stages (ADDITIVE —
+                # Session 8/9: total_hrs is really the sum of many small
+                # part ops, which concentrates around the mean far more
+                # than a single Exponential draw does).
                 mean_st = stage_tms[j]
-                yield env.timeout(random.expovariate(1.0/mean_st))
+                k_j = prod.get("k_stages", [1, 1, 1])[j] if prod.get("k_stages") else 1
+                if k_j <= 1:
+                    # UNCHANGED from before — exact same call, same RNG
+                    # sequence for the default/no-part-level-data case,
+                    # so every existing seeded run stays bit-identical.
+                    service_time = random.expovariate(1.0 / mean_st)
+                else:
+                    # Erlang-k = Gamma(shape=k, scale=mean/k) — exactly
+                    # matches Erlang-k for integer k, mean preserved.
+                    service_time = random.gammavariate(k_j, mean_st / k_j)
+                yield env.timeout(service_time)
                 soj_j   = env.now - t_arrive_j
 
                 if not is_warmup_fn(env.now):
