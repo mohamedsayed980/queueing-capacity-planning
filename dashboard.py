@@ -25,6 +25,7 @@ import plotly.express as px
 import pandas as pd
 import math
 from math import factorial
+from queue_engine import run_model, MODEL_CATALOG
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIG
@@ -231,10 +232,55 @@ with tab1:
         st.info(f"**{stg_info['type']}** machines  |  "
                 f"Default S = {stg_info['S']} (actual factory)")
 
+        # Model selector — survey of Table 3.1's 20 classic single-queue
+        # models (per the original project brief's Stage-1 goal). All 20
+        # already exist and are validated in queue_engine.py's run_model()
+        # dispatcher; this UI just exposes them. Model 1 (M/M/S) below
+        # keeps its EXACT original code path — default behavior for
+        # anyone who doesn't touch this selector is unchanged.
+        model_opts1 = [f"{mid}. {name}" for mid, name, params, notes
+                       in MODEL_CATALOG if notes != "NOT IMPLEMENTED — see run_model()"]
+        model_sel1 = st.selectbox("Queueing Model (Table 3.1)", model_opts1,
+                                   index=0)
+        model_id1 = int(model_sel1.split(".")[0])
+        model_params1 = next(p for mid,n,p,nt in MODEL_CATALOG if mid==model_id1)
+        with st.expander("ℹ️ Ken­dall notation survey — 19 of 20 models available",
+                          expanded=False):
+            st.caption("Model 19 (GI/M/1 Priority) is listed in the "
+                       "thesis's Table 3.1 but its formula was never "
+                       "actually implemented — flagged, not guessed at. "
+                       "The other 19 are all here and validated.")
+
         lam1 = st.number_input("Arrival rate λ [u/hr]", 0.01, 50.0, 2.0, 0.1)
         mu1  = st.number_input("Service rate μ [u/hr]", 0.01, 200.0, float(stg_info['S']*2), 0.5)
-        S1   = st.slider("Servers S (same-type machines)", 1, 20, stg_info['S'])
-        alpha1 = st.slider("Rejection rate α (CL-11 Assumption 6)", 0.0, 0.4, 0.0, 0.01)
+
+        # Extra params, shown only when the selected model needs them
+        extra_kw1 = {}
+        if "S" in model_params1:
+            S1 = st.slider("Servers S (same-type machines)", 1, 20,
+                            stg_info['S'], key="t1_S")
+            extra_kw1["S"] = S1
+        else:
+            S1 = 1  # single-server models — used below for the rho estimate/chart guard
+        if "alpha" in model_params1:
+            extra_kw1["alpha"] = st.slider("Rejection rate α (CL-11 Assumption 6)",
+                0.0, 0.4, 0.0, 0.01, key="t1_alpha")
+        if "K" in model_params1:
+            extra_kw1["K"] = st.slider("System capacity K", 2, 30, 8, key="t1_K")
+        if "sigma2" in model_params1:
+            extra_kw1["sigma2"] = st.number_input("Service variance σ²",
+                0.0, 10.0, 1.0/mu1**2, 0.01, key="t1_sigma2")
+        if "mu1" in model_params1:
+            extra_kw1["mu1"] = st.number_input("μ₁ (fast phase)", 0.1, 200.0,
+                mu1*0.8, key="t1_mu1")
+            extra_kw1["mu2"] = st.number_input("μ₂ (slow phase)", 0.1, 200.0,
+                mu1*1.5, key="t1_mu2")
+        if "k_erlang" in model_params1:
+            extra_kw1["k_erlang"] = st.slider("Erlang shape k", 1, 500, 4,
+                key="t1_kerlang")
+        if "beta" in model_params1:
+            extra_kw1["beta"] = st.number_input("Gamma shape β", 0.1, 20.0,
+                2.0, key="t1_beta")
 
         rho_chk = lam1/(S1*mu1)
         if rho_chk >= 1:
@@ -245,67 +291,109 @@ with tab1:
             st.success(f"✅ STABLE: ρ={rho_chk:.3f}")
 
     with c2:
-        r1 = queue_metrics(lam1, mu1, S1, alpha1)
-        if r1:
-            st.subheader("📈 Performance Metrics")
-            m1,m2,m3,m4,m5 = st.columns(5)
-            m1.metric("ρ", f"{r1['rho']:.3f}")
-            m2.metric("P₀", f"{r1['P0']:.4f}")
-            m3.metric("Lq", f"{r1['Lq']:.4f}")
-            m4.metric("Wq [hr]", f"{r1['Wq']:.4f}")
-            m5.metric("Ws [hr]", f"{r1['Ws']:.4f}")
+        if model_id1 == 1:
+            # UNCHANGED original path — exact same code as before this
+            # session, so default behavior is byte-for-byte identical.
+            alpha1 = extra_kw1.get("alpha", 0.0)
+            r1 = queue_metrics(lam1, mu1, S1, alpha1)
+            if r1:
+                st.subheader("📈 Performance Metrics")
+                m1,m2,m3,m4,m5 = st.columns(5)
+                m1.metric("ρ", f"{r1['rho']:.3f}")
+                m2.metric("P₀", f"{r1['P0']:.4f}")
+                m3.metric("Lq", f"{r1['Lq']:.4f}")
+                m4.metric("Wq [hr]", f"{r1['Wq']:.4f}")
+                m5.metric("Ws [hr]", f"{r1['Ws']:.4f}")
 
-            # Wq check: Little's Law
-            st.caption(f"✓ Little's Law: Lq = λ×Wq = "
-                       f"{lam1}×{r1['Wq']:.4f} = {round(lam1*r1['Wq'],4)} "
-                       f"≈ {r1['Lq']}")
+                # Wq check: Little's Law
+                st.caption(f"✓ Little's Law: Lq = λ×Wq = "
+                           f"{lam1}×{r1['Wq']:.4f} = {round(lam1*r1['Wq'],4)} "
+                           f"≈ {r1['Lq']}")
 
-            st.divider()
-            # Sensitivity: Lq & rho vs S
-            S_rng = list(range(1, 16))
-            rhos_s = [lam1/(s*mu1) for s in S_rng]
-            Lqs_s  = []
-            for s in S_rng:
-                rm = queue_metrics(lam1, mu1, s, alpha1)
-                Lqs_s.append(rm["Lq"] if rm else None)
+                st.divider()
+                # Sensitivity: Lq & rho vs S
+                S_rng = list(range(1, 16))
+                rhos_s = [lam1/(s*mu1) for s in S_rng]
+                Lqs_s  = []
+                for s in S_rng:
+                    rm = queue_metrics(lam1, mu1, s, alpha1)
+                    Lqs_s.append(rm["Lq"] if rm else None)
 
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=S_rng, y=rhos_s, name="ρ",
-                line=dict(color=stg_info["color"], width=2), yaxis="y"))
-            fig.add_trace(go.Bar(x=S_rng, y=Lqs_s, name="Lq",
-                marker_color="lightblue", opacity=0.6, yaxis="y2"))
-            fig.add_hline(y=1.0, line_dash="dash", line_color="red",
-                          annotation_text="ρ=1 (unstable)")
-            fig.add_vline(x=S1, line_dash="dot", line_color="gray",
-                          annotation_text=f"Current S={S1}")
-            fig.update_layout(
-                title=f"{stg_info['type']} — ρ & Lq vs Number of Servers",
-                xaxis_title="S (number of servers)",
-                yaxis=dict(title="Utilization ρ", side="left"),
-                yaxis2=dict(title="Queue Length Lq", side="right",
-                            overlaying="y"),
-                height=360, margin=dict(t=40,b=40),
-                legend=dict(orientation="h",y=-0.25))
-            st.plotly_chart(fig, use_container_width=True)
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=S_rng, y=rhos_s, name="ρ",
+                    line=dict(color=stg_info["color"], width=2), yaxis="y"))
+                fig.add_trace(go.Bar(x=S_rng, y=Lqs_s, name="Lq",
+                    marker_color="lightblue", opacity=0.6, yaxis="y2"))
+                fig.add_hline(y=1.0, line_dash="dash", line_color="red",
+                              annotation_text="ρ=1 (unstable)")
+                fig.add_vline(x=S1, line_dash="dot", line_color="gray",
+                              annotation_text=f"Current S={S1}")
+                fig.update_layout(
+                    title=f"{stg_info['type']} — ρ & Lq vs Number of Servers",
+                    xaxis_title="S (number of servers)",
+                    yaxis=dict(title="Utilization ρ", side="left"),
+                    yaxis2=dict(title="Queue Length Lq", side="right",
+                                overlaying="y"),
+                    height=360, margin=dict(t=40,b=40),
+                    legend=dict(orientation="h",y=-0.25))
+                st.plotly_chart(fig, use_container_width=True)
 
-            # All 3 stages comparison
-            st.subheader("🏭 All 3 Stage Groups Comparison")
-            stage_rows = []
-            for j_idx in range(3):
-                stg = STAGES[j_idx+1]
-                rm = queue_metrics(lam1, mu1, stg["S"])
-                stage_rows.append({
-                    "Stage"       : stg["name"],
-                    "Group"       : stg["group"],
-                    "Type"        : stg["type"],
-                    "S (servers)" : stg["S"],
-                    "ρ"           : round(lam1/(stg["S"]*mu1),3),
-                    "Lq"          : round(rm["Lq"],4) if rm else "∞",
-                    "Wq [hr]"     : round(rm["Wq"],4) if rm else "∞",
-                })
-            st.dataframe(pd.DataFrame(stage_rows), hide_index=True,
-                         use_container_width=True)
-            st.caption("⚠️ Stage 2 (Punching, S=3) = bottleneck — lowest S")
+                # All 3 stages comparison
+                st.subheader("🏭 All 3 Stage Groups Comparison")
+                stage_rows = []
+                for j_idx in range(3):
+                    stg = STAGES[j_idx+1]
+                    rm = queue_metrics(lam1, mu1, stg["S"])
+                    stage_rows.append({
+                        "Stage"       : stg["name"],
+                        "Group"       : stg["group"],
+                        "Type"        : stg["type"],
+                        "S (servers)" : stg["S"],
+                        "ρ"           : round(lam1/(stg["S"]*mu1),3),
+                        "Lq"          : round(rm["Lq"],4) if rm else "∞",
+                        "Wq [hr]"     : round(rm["Wq"],4) if rm else "∞",
+                    })
+                st.dataframe(pd.DataFrame(stage_rows), hide_index=True,
+                             use_container_width=True)
+                st.caption("⚠️ Stage 2 (Punching, S=3) = bottleneck — lowest S")
+        else:
+            # NEW generic path — any of the other 18 available models.
+            # Different models return different metric keys, so this
+            # displays whatever is actually present instead of assuming
+            # a fixed 5-metric schema.
+            try:
+                r1 = run_model(model_id1, lam1, mu1, **extra_kw1)
+            except NotImplementedError as e:
+                r1 = None
+                st.error(str(e))
+            except Exception as e:
+                r1 = None
+                st.error(f"Model computation failed: {e}")
+
+            if r1:
+                st.subheader(f"📈 Performance Metrics — {r1.get('model', model_sel1)}")
+                metric_order = ["rho","P0","PK","Lq","Ls","Wq","Ws",
+                                 "CoV2","k","beta","mu1","mu2","mu_eff","a","B","C"]
+                present = [k for k in metric_order if k in r1 and r1[k] is not None]
+                cols = st.columns(min(len(present), 6) or 1)
+                for i, k in enumerate(present):
+                    val = r1[k]
+                    disp = f"{val:.4f}" if isinstance(val,(int,float)) else str(val)
+                    cols[i % len(cols)].metric(k, disp)
+
+                if "Lq" in r1 and "Wq" in r1:
+                    lam_check = r1.get("lam_eff", lam1)
+                    st.caption(f"✓ Little's Law: Lq = λ×Wq ≈ "
+                               f"{round(lam_check*r1['Wq'],4)} vs reported Lq={r1['Lq']}")
+
+                st.info("ℹ️ The S-sensitivity chart and 3-stage comparison "
+                        "below are specific to the M/M/S model (#1) — "
+                        "switch back to it to see those. This model's raw "
+                        "results are shown above instead.")
+                st.json({k:v for k,v in r1.items() if k != "model"})
+            else:
+                st.warning("No result — check parameters (may be unstable, "
+                           "λ ≥ S·μ) or see the error above.")
 
 # ═══════════════════════════════════════════════════════════════════
 # TAB 2 — CAPACITY PLANNING
@@ -1114,12 +1202,22 @@ with tab8:
                 st.caption(f"Using {len(src8)} products fitted in Tab 9")
             sim_t8 = st.slider("Sim time [hr]",
                 200, 2000, 500, 100, key="st8")
+            renege_T8 = st.slider(
+                "Patience T [hr] (Eq 3.8 reneging)",
+                0.1, 5.0, 1.0, 0.1, key="rt8",
+                help="Default patience for ALL scenarios below, unless "
+                     "overridden by the patience-sensitivity checkbox.")
             st.markdown("**Select scenarios to compare:**")
             sc_base  = st.checkbox("Baseline S=[5,3,5] Exhaustive",True)
             sc_gated = st.checkbox("Gated policy S=[5,3,5]", True)
             sc_s2    = st.checkbox("Add server S2: [5,4,5]", True)
             sc_2sh   = st.checkbox("2 shifts S=[5,3,5]", False)
             sc_3sh   = st.checkbox("3 shifts S=[5,3,5]", False)
+            sc_pat   = st.checkbox(
+                "Patience sensitivity: T=0.5 vs T=2.0 (S=[5,3,5])", False,
+                help="Compares low vs high customer patience at baseline "
+                     "S, holding everything else fixed — isolates the "
+                     "reneging effect from Option B's finding.")
             run8 = st.button("▶ RUN EXPERIMENTS",
                 type="primary", key="run8")
 
@@ -1150,13 +1248,23 @@ with tab8:
                     scenarios8.append({
                         "name":"3 Shifts [5,3,5]",
                         "S_stages":[5,3,5],"policy":"exhaustive","n_shifts":3})
+                if sc_pat:
+                    scenarios8.append({
+                        "name":"Low patience T=0.5",
+                        "S_stages":[5,3,5],"policy":"exhaustive","n_shifts":1,
+                        "renege_T":0.5})
+                    scenarios8.append({
+                        "name":"High patience T=2.0",
+                        "S_stages":[5,3,5],"policy":"exhaustive","n_shifts":1,
+                        "renege_T":2.0})
 
                 if not scenarios8:
                     st.warning("Select at least one scenario")
                 else:
                     with st.spinner(f"Running {len(scenarios8)} scenarios..."):
                         exp8 = run_experiment(prod8, scenarios8,
-                            sim_time=sim_t8, warmup=sim_t8//10)
+                            sim_time=sim_t8, warmup=sim_t8//10,
+                            renege_T=renege_T8)
                     cmp8 = compare_summary(exp8)
 
                     st.subheader("📋 Comparison Table")

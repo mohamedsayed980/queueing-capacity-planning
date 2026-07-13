@@ -490,13 +490,46 @@ def run_model(model_id: int, lam: float, mu: float,
         16: lambda: MEk1(lam, mu, k_erlang),
         17: lambda: MGamma1(lam, mu, beta),
         18: lambda: MG1(lam, mu, sigma2 or 1/mu**2),
-        19: lambda: GIM1_priority(lam, mu),
+        19: lambda: (_ for _ in ()).throw(NotImplementedError(
+            "Model 19 (GI/M/1 Priority) is listed in Table 3.1 but was "
+            "never actually implemented in this file — 'GIM1_priority' "
+            "doesn't exist anywhere. Pre-existing gap, not something "
+            "introduced by recent sessions. Needs the exact formula from "
+            "the thesis before it can be built (GI/M/S alone, at model 20, "
+            "and priority alone, at model 5, both exist — but priority "
+            "combined with general-interarrival is a genuinely different "
+            "formula, not a simple combination of the two).")),
         20: lambda: GIMS(lam, mu, S),
     }
     fn = dispatch.get(model_id)
     if fn is None:
         raise ValueError(f"model_id must be 1-20, got {model_id}")
     return fn()
+
+
+MODEL_CATALOG = [
+    # (id, name, extra_params_needed, notes)
+    (1,  "M/M/S — Multi-server (CL-12 default)",     ["S","alpha"], ""),
+    (2,  "M/M/2 — Two-server",                        ["alpha"], ""),
+    (3,  "M/M/S/K — Finite queue capacity",            ["S","K"], ""),
+    (4,  "M/M/S/K/K — Finite calling population",      ["S","K"], ""),
+    (5,  "M/M/S Priority — Priority-served multi-server", ["S"], ""),
+    (6,  "M/M/1 — Single server",                      ["alpha"], ""),
+    (7,  "M/M/2 (alt) — Two-server",                   ["alpha"], ""),
+    (8,  "M/M/1/K — Single server, finite queue",      ["K"], ""),
+    (9,  "M/M/1/K/K — Single server, finite population", ["K"], ""),
+    (10, "M/M/∞ — Infinite servers (no queueing)",     [], ""),
+    (11, "D/D/S/K/K — Deterministic, finite population", ["S","K"], ""),
+    (12, "M/D/1 — Deterministic service",              [], ""),
+    (13, "M/G/1/K/K — General service, finite population", ["sigma2"], ""),
+    (14, "M/G/1 — General service",                    ["sigma2"], ""),
+    (15, "M/H2/1 — Hyperexponential service",          ["mu1","mu2"], ""),
+    (16, "M/Ek/1 — Erlang-k service",                  ["k_erlang"], ""),
+    (17, "M/Gamma/1 — Gamma service",                  ["beta"], ""),
+    (18, "M/G/1 (alt) — General service",               ["sigma2"], ""),
+    (19, "GI/M/1 Priority",                             [], "NOT IMPLEMENTED — see run_model()"),
+    (20, "GI/M/S — General arrivals, multi-server (approx.)", ["S"], ""),
+]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

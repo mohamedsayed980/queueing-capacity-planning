@@ -510,12 +510,14 @@ def run_experiment(products:     List[dict],
                    scenarios:    List[dict],
                    sim_time:     float = 1000,
                    warmup:       float = 100,
-                   seed:         int   = 42) -> List[dict]:
+                   seed:         int   = 42,
+                   renege_T:     float = 1.0) -> List[dict]:
     """
     Run multiple scenarios and compare KPIs.
 
     Each scenario is a dict:
-      {"name": str, "S_stages": list, "policy": str, "n_shifts": int}
+      {"name": str, "S_stages": list, "policy": str, "n_shifts": int,
+       "renege_T": float (optional, defaults to the renege_T argument)}
 
     Returns list of results for comparison.
 
@@ -524,6 +526,7 @@ def run_experiment(products:     List[dict],
       {"name":"Add server",  "S_stages":[5,4,5], "policy":"exhaustive","n_shifts":1}
       {"name":"2 shifts",    "S_stages":[5,3,5], "policy":"exhaustive","n_shifts":2}
       {"name":"Gated",       "S_stages":[5,3,5], "policy":"gated",     "n_shifts":1}
+      {"name":"More patient","S_stages":[5,3,5], "renege_T":2.0}   # per-scenario override
     """
     results = []
     for i, sc in enumerate(scenarios):
@@ -536,6 +539,7 @@ def run_experiment(products:     List[dict],
             warmup         = warmup,
             snapshot_interval = sim_time/10,
             seed           = seed + i,
+            renege_T       = sc.get("renege_T", renege_T),
         )
         r = sim.run()
         r["scenario_name"] = sc.get("name", f"Scenario {i+1}")
@@ -561,6 +565,7 @@ def compare_summary(experiment_results: List[dict]) -> List[dict]:
             "Policy"        : r["config"]["policy"],
             "S=[S1,S2,S3]"  : str(r["config"]["S_stages"]),
             "Shifts"        : r["config"]["n_shifts"],
+            "Patience T"    : r["config"].get("renege_T", 1.0),
             "Total Done"    : r["total_done"],
             "Total Revenue" : f"${r['total_revenue']:,.0f}",
             "Avg Wq [hr]"   : round(total_Wq, 3),
