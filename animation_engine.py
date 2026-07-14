@@ -225,6 +225,18 @@ def _convert_live_snapshot(raw: dict, products: List[dict]) -> dict:
                                   "status": "busy" if i < s["busy"] else "idle"})
         queue_len[stage] = s["queue"]
 
+    # ADDITIVE: per-stage average Wq (waiting time), unweighted mean
+    # across products' cumulative-so-far stage_Wq. Clearly an average,
+    # not a per-job instantaneous value — queue_len above already gives
+    # the exact instantaneous count; this adds the time dimension
+    # alongside it (previously only the count was surfaced in Tab 10).
+    wq_by_stage = {}
+    pkis = raw.get("product_kpis", [])
+    for stage in x_lane:
+        vals = [pk["stage_Wq"][stage-1] for pk in pkis
+                if len(pk.get("stage_Wq", [])) >= stage]
+        wq_by_stage[stage] = round(sum(vals)/len(vals), 3) if vals else 0.0
+
     jobs_out = []
     if raw.get("jobs_detail"):
         # EXACT: real job identity, grouped per stage/status for layout
@@ -264,7 +276,7 @@ def _convert_live_snapshot(raw: dict, products: List[dict]) -> dict:
                 })
 
     return {"t": raw["sim_time"], "jobs": jobs_out, "machines": machines_out,
-            "queue_len": queue_len}
+            "queue_len": queue_len, "wq_by_stage": wq_by_stage}
 
 
 def get_product_names(product_mode: str = "Experimental") -> List[str]:
@@ -302,7 +314,8 @@ def build_cfg_for_run(S_stages: List[int], product_names: List[str]) -> SimConfi
 def load_snapshots_from_live(S_stages=None, policy="exhaustive", n_shifts=1,
                               sim_time=1500, warmup=150, snapshot_interval=50,
                               seed=42, product_mode="Experimental",
-                              renege_T=1.0, products=None) -> List[dict]:
+                              renege_T=1.0, products=None,
+                              shifts_per_stage=None) -> List[dict]:
     """
     Real integration path: runs your actual live_simulation.LiveSimulation
     and converts its aggregate KPI snapshots into animation frames.
@@ -311,6 +324,10 @@ def load_snapshots_from_live(S_stages=None, policy="exhaustive", n_shifts=1,
     directly instead of looking up PRODUCTS_EXP/PRODUCTS_ACTUAL via
     product_mode. Each product dict may carry "k_stages" for Erlang-k
     service sampling (see live_simulation.py's _job_process).
+
+    shifts_per_stage: optional [sh1,sh2,sh3] — per-stage shift count,
+    passed straight through to LiveSimulation (see its docstring for why
+    this is mathematically identical to manually multiplying S_stages).
     """
     live = importlib.import_module("live_simulation")
     if products is None:
@@ -318,7 +335,8 @@ def load_snapshots_from_live(S_stages=None, policy="exhaustive", n_shifts=1,
                     else live.PRODUCTS_ACTUAL)
     sim = live.LiveSimulation(
         products, S_stages=S_stages or live.S_DEFAULT, policy=policy,
-        n_shifts=n_shifts, sim_time=sim_time, warmup=warmup,
+        n_shifts=n_shifts, shifts_per_stage=shifts_per_stage,
+        sim_time=sim_time, warmup=warmup,
         snapshot_interval=snapshot_interval, seed=seed, renege_T=renege_T,
     )
     result = sim.run()
@@ -392,10 +410,11 @@ def build_animation_figure(snapshots: List[dict], cfg: SimConfig = None,
     base_traces = _frame_traces(snapshots[0], cfg)
     def _q_label(st, s):
         n = s["queue_len"][st]
+        wq = s.get("wq_by_stage", {}).get(st, 0.0)  # graceful default for old snapshots
         busy_frac = sum(1 for m in s["machines"] if m["stage"] == st and m["status"] == "busy")
         total = cfg.servers_per_stage[st]
         sat = " ⚠️ SATURATED" if busy_frac == total and n > total * 2 else ""
-        return f"Q{st}: {n}{sat}"
+        return f"Q{st}: {n}  |  Wq≈{wq:.2f}hr{sat}"
 
     frames = [
         go.Frame(data=_frame_traces(s, cfg), name=f"t={s['t']:.1f}",

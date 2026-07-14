@@ -476,6 +476,26 @@ def fit_service(data: List[float],
     cv      = std_st / mean_st if mean_st > 0 else 0
     mu_fitted = 1.0 / mean_st if mean_st > 0 else 0
 
+    # ADDITIVE guard: near-constant data (very high part-count Erlang-k,
+    # CV -> 0) breaks scipy's gamma.fit() (MLE has no variance to fit
+    # against). This matches the function's OWN documented intent
+    # ("CV ≈ 0.0 → Deterministic (M/D/1)") — previously unreachable
+    # because nothing before the part-level fitting fed CV this low.
+    if cv < 0.02:
+        return {
+            "data_type": "service_time", "n_obs": len(data),
+            "mean_st": round(float(mean_st), 6),
+            "std_st": round(float(std_st), 6),
+            "cv": round(float(cv), 4),
+            "mu_fitted": round(mu_fitted, 6),
+            "best_fit": "deterministic",
+            "recommended_model": "M/D/1",
+            "results": {"deterministic": {
+                "dist": "Deterministic", "mu": round(mu_fitted, 6),
+                "model": "M/D/1", "cv": round(float(cv), 4),
+            }},
+        }
+
     results = {}
 
     # 1. Exponential
@@ -579,7 +599,8 @@ def run_fitting_pipeline(products_input: List[dict],
                           hrs_per_shift: float = DEFAULT_HRS_PER_SHIFT,
                           n_shifts: int = DEFAULT_SHIFTS,
                           stage_ratios: List[float] = None,
-                          cost_mode: str = "simple") -> dict:
+                          cost_mode: str = "simple",
+                          avg_part_time: float = None) -> dict:
     """
     Complete 4-step pipeline for all products.
 
@@ -593,6 +614,13 @@ def run_fitting_pipeline(products_input: List[dict],
         F1         : float (total cost per unit)
       Optional (detailed cost mode):
         DL, DM, IDL, IDM, D_MAT, FC : floats
+
+    avg_part_time: average time per individual part operation [hr]. If
+      given, Step 2 uses compute_mu_stages_parts() (real per-stage
+      Erlang-k) instead of compute_mu_stages(), AND Step 4's service fit
+      uses the correspondingly-derived CoV² instead of silently assuming
+      CV=1.0 (Exponential) — fixes the disconnect where "recommended_model"
+      always showed M/M/S regardless of part-level fitting being enabled.
 
     Returns complete fitted parameters for all products.
     """
@@ -609,11 +637,16 @@ def run_fitting_pipeline(products_input: List[dict],
         result["step1_lambda"] = lam_data
         lam = lam_data["lam"]
 
-        # Step 2: Service → μ
-        mu_data = compute_mu_stages(
-            p.get("total_hrs", 1),
-            ratios=stage_ratios,
-            manual_hrs=p.get("stage_hrs", None))
+        # Step 2: Service → μ (part-level Erlang-k if avg_part_time given)
+        if avg_part_time:
+            mu_data = compute_mu_stages_parts(
+                p.get("total_hrs", 1), avg_part_time=avg_part_time,
+                ratios=stage_ratios, manual_hrs=p.get("stage_hrs", None))
+        else:
+            mu_data = compute_mu_stages(
+                p.get("total_hrs", 1),
+                ratios=stage_ratios,
+                manual_hrs=p.get("stage_hrs", None))
         result["step2_mu"] = mu_data
         mu_overall = mu_data["mu_overall"]
 
@@ -632,7 +665,18 @@ def run_fitting_pipeline(products_input: List[dict],
         # Step 4: Fit distributions (from summary stats)
         rho = lam / mu_overall if mu_overall > 0 else 0
         fit_arr = fit_from_summary(1/lam if lam>0 else 1, data_type="arrival")
-        fit_svc = fit_from_summary(p.get("total_hrs", 1), data_type="service")
+
+        # ADDITIVE: derive the real service-time std from part-level k
+        # instead of always letting fit_from_summary default to CV=1.0.
+        # CoV² = 1/k for Erlang-k -> CV = 1/sqrt(k) -> std = mean/sqrt(k).
+        total_hrs_val = p.get("total_hrs", 1)
+        if avg_part_time:
+            k_overall = max(1, round(total_hrs_val / avg_part_time))
+            svc_std = total_hrs_val / (k_overall ** 0.5)
+        else:
+            k_overall = 1
+            svc_std = None   # unchanged: fit_from_summary defaults to CV=1.0
+        fit_svc = fit_from_summary(total_hrs_val, std=svc_std, data_type="service")
 
         result["step4_fit"] = {
             "arrival_fit"     : fit_arr,
@@ -641,6 +685,7 @@ def run_fitting_pipeline(products_input: List[dict],
             "mu_final"        : round(mu_overall, 6),
             "rho"             : round(rho, 4),
             "recommended_model": fit_svc.get("recommended_model", "M/M/S"),
+            "part_level_k"    : k_overall if avg_part_time else None,  # ADDITIVE, for transparency
             "stable"          : rho < 1.0,
         }
 
@@ -654,6 +699,7 @@ def run_fitting_pipeline(products_input: List[dict],
         "n_shifts"    : n_shifts,
         "stage_ratios": stage_ratios,
         "cost_mode"   : cost_mode,
+        "avg_part_time": avg_part_time,
         "n_products"  : len(products_input),
         "products"    : output,
     }

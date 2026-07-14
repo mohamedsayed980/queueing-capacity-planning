@@ -1036,11 +1036,20 @@ with tab7:
 
             st.divider()
             st.markdown("**Server Config (CL-12):**")
-            S7 = []
+            st.caption("Shifts here are PER-STAGE — e.g. Shifts=2 at "
+                       "Punching alone, to target that specific "
+                       "bottleneck. Mathematically identical to doubling "
+                       "S there (confirmed: this engine has no shift-time "
+                       "-window modeling, servers are always available) —"
+                       " this is just a cleaner way to express it.")
+            S7, shifts7 = [], []
             for j, (nm, df) in enumerate(
                     zip(["Cutting","Punching","Bending"],[5,3,5])):
-                sv = st.slider(f"S{j+1} {nm}", 1, 10, df, key=f"s7_{j}")
+                cS, cSh = st.columns([2,1])
+                sv = cS.slider(f"S{j+1} {nm}", 1, 10, df, key=f"s7_{j}")
+                sh = cSh.selectbox(f"Shifts", [1,2,3], key=f"sh7_{j}")
                 S7.append(sv)
+                shifts7.append(sh)
 
             run7 = st.button("▶ RUN SIMULATION", type="primary",
                              key="run7")
@@ -1054,7 +1063,8 @@ with tab7:
                 with st.spinner("Running simulation..."):
                     sim7 = LiveSimulation(
                         prod7, S_stages=S7, policy=policy7,
-                        n_shifts=n_sh7, sim_time=sim_t7,
+                        n_shifts=n_sh7, shifts_per_stage=shifts7,
+                        sim_time=sim_t7,
                         warmup=sim_t7//10,
                         snapshot_interval=sim_t7//10,
                         seed=int(seed7), renege_T=renege_T7)
@@ -1639,7 +1649,8 @@ with tab9:
                 full_prods, period=period9,
                 working_days=w_days9, hrs_per_shift=hrs9,
                 n_shifts=shifts9, stage_ratios=ratios9,
-                cost_mode="simple")
+                cost_mode="simple",
+                avg_part_time=avg_part9 if use_parts9 else None)
 
             exported9 = export_to_dashboard(result9)
 
@@ -1807,10 +1818,13 @@ with tab10:
 
             st.divider()
             st.markdown("**Server Config (CL-12):**")
-            S10 = []
+            S10, shifts10 = [], []
             for j, (nm, df) in enumerate(zip(["Cutting", "Punching", "Bending"], [5, 3, 5])):
-                sv = st.slider(f"S{j+1} {nm}", 1, 10, df, key=f"s10_{j}")
+                cS, cSh = st.columns([2,1])
+                sv = cS.slider(f"S{j+1} {nm}", 1, 10, df, key=f"s10_{j}")
+                sh = cSh.selectbox("Shifts", [1,2,3], key=f"sh10_{j}")
                 S10.append(sv)
+                shifts10.append(sh)
 
             st.caption("ℹ️ At S=[5,3,5], queues now stay bounded (jobs that "
                        "wait past the patience time T above abandon the "
@@ -1830,6 +1844,7 @@ with tab10:
                     if src10_label == "Built-in":
                         snaps10 = load_snapshots_from_live(
                             S_stages=S10, policy=policy10, n_shifts=n_sh10,
+                            shifts_per_stage=shifts10,
                             sim_time=sim_t10, warmup=max(sim_t10 // 10, 5),
                             snapshot_interval=max(sim_t10 // 40, 5),
                             product_mode=mode10, renege_T=renege_T10,
@@ -1838,11 +1853,18 @@ with tab10:
                     else:
                         snaps10 = load_snapshots_from_live(
                             S_stages=S10, policy=policy10, n_shifts=n_sh10,
+                            shifts_per_stage=shifts10,
                             sim_time=sim_t10, warmup=max(sim_t10 // 10, 5),
                             snapshot_interval=max(sim_t10 // 40, 5),
                             products=src10, renege_T=renege_T10,
                         )
                         prod_names10 = [p["type"] for p in src10]
+                    # NOTE: build_cfg_for_run uses the PHYSICAL S10 (not
+                    # effective S×shifts) deliberately — the animation
+                    # should show real machine count, not a doubled count
+                    # that would misrepresent what's physically on the
+                    # floor. The shift effect shows up in throughput/queue
+                    # behavior instead, which is the honest way to show it.
                     cfg10 = build_cfg_for_run(S10, prod_names10)
                     fig10 = build_animation_figure(snaps10, cfg10, frame_duration_ms=speed_ms10)
                 st.session_state["tab10_fig"] = fig10

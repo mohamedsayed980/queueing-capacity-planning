@@ -111,6 +111,7 @@ class LiveSimulation:
                  S_stages:          List[int]   = None,
                  policy:            str         = "exhaustive",
                  n_shifts:          int         = 1,
+                 shifts_per_stage:  List[int]   = None,
                  stage_ratios:      List[float] = None,
                  sim_time:          float       = 2000,
                  warmup:            float       = 200,
@@ -120,9 +121,29 @@ class LiveSimulation:
         """
         Args:
             products          : list of product dicts (lam, mu, total_hrs, NR)
-            S_stages          : servers per stage [S1, S2, S3]
+            S_stages          : PHYSICAL servers per stage [S1, S2, S3]
+                                 (actual machine count, CL-12)
             policy            : "exhaustive" or "gated"
-            n_shifts          : 1, 2, or 3 shifts per day
+            n_shifts          : 1, 2, or 3 shifts per day — GLOBAL, scales
+                                 the whole job's arrival rate (lam_eff),
+                                 same for every stage (existing behavior,
+                                 unchanged)
+            shifts_per_stage  : ADDITIVE, optional [sh1, sh2, sh3]. Unlike
+                                 n_shifts above, this scales CAPACITY at
+                                 each stage individually — e.g. [1,2,1]
+                                 means Stage 2 alone runs 2 shifts. Since
+                                 this engine has no shift-time-window
+                                 modeling (servers are always continuously
+                                 available across the whole simulated
+                                 clock — confirmed, see Session 13), an
+                                 extra shift at a stage is mathematically
+                                 IDENTICAL to that many more physical
+                                 servers there. This parameter is exactly
+                                 that: effective_S[j] = S_stages[j] *
+                                 shifts_per_stage[j]. Provided as a clean,
+                                 self-documenting alternative to manually
+                                 pre-multiplying S_stages yourself — the
+                                 underlying math is unchanged either way.
             stage_ratios      : time split [0.2, 0.5, 0.3]
             sim_time          : total simulation horizon [hr]
             warmup            : warm-up period to discard [hr]
@@ -142,7 +163,17 @@ class LiveSimulation:
                 slider (Tab 7 / Tab 10).
         """
         self.products          = products
-        self.S_stages          = S_stages or S_DEFAULT
+        base_S                 = S_stages or S_DEFAULT
+        self.shifts_per_stage  = shifts_per_stage
+        if shifts_per_stage:
+            if len(shifts_per_stage) != len(base_S):
+                raise ValueError(
+                    f"shifts_per_stage length ({len(shifts_per_stage)}) "
+                    f"must match S_stages length ({len(base_S)})")
+            self.S_stages = [s * sh for s, sh in zip(base_S, shifts_per_stage)]
+        else:
+            self.S_stages = base_S
+        self.S_stages_physical = base_S   # kept for transparency/reporting
         self.policy            = policy
         self.n_shifts          = n_shifts
         self.stage_ratios      = stage_ratios or RATIOS
@@ -485,7 +516,9 @@ class LiveSimulation:
         return {
             "config": {
                 "policy"    : self.policy,
-                "S_stages"  : self.S_stages,
+                "S_stages"  : self.S_stages,              # effective (post shifts_per_stage)
+                "S_stages_physical": self.S_stages_physical,  # ADDITIVE: real machine count
+                "shifts_per_stage" : self.shifts_per_stage,   # ADDITIVE: None unless used
                 "n_shifts"  : self.n_shifts,
                 "sim_time"  : self.sim_time,
                 "warmup"    : self.warmup,
