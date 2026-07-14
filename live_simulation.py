@@ -113,6 +113,7 @@ class LiveSimulation:
                  n_shifts:          int         = 1,
                  shifts_per_stage:  List[int]   = None,
                  stage_ratios:      List[float] = None,
+                 stage_names:       List[str]   = None,
                  sim_time:          float       = 2000,
                  warmup:            float       = 200,
                  snapshot_interval: float       = 50,
@@ -145,6 +146,13 @@ class LiveSimulation:
                                  pre-multiplying S_stages yourself — the
                                  underlying math is unchanged either way.
             stage_ratios      : time split [0.2, 0.5, 0.3]
+            stage_names       : ADDITIVE, optional display names per
+                                 stage (e.g. ["Plate Shears","Punching",
+                                 "Bending","Welding"] for a 4-stage Sheet
+                                 Metal Dept. run). Defaults to the
+                                 original 3 names when length matches;
+                                 otherwise auto-generates "Stage 1".."N"
+                                 so any N always has valid names.
             sim_time          : total simulation horizon [hr]
             warmup            : warm-up period to discard [hr]
             snapshot_interval : KPI snapshot every N hours
@@ -177,6 +185,29 @@ class LiveSimulation:
         self.policy            = policy
         self.n_shifts          = n_shifts
         self.stage_ratios      = stage_ratios or RATIOS
+
+        # ADDITIVE (N-stage generalization, Session 14): validate the
+        # engine's two length-N inputs agree, and that ratios sum to 1.0.
+        # Was previously always exactly 3, so this was never an actual
+        # risk — now that N is configurable, a mismatch would otherwise
+        # surface as a confusing IndexError deep inside the DES loop.
+        if len(self.S_stages) != len(self.stage_ratios):
+            raise ValueError(
+                f"S_stages (length {len(self.S_stages)}) and "
+                f"stage_ratios (length {len(self.stage_ratios)}) must "
+                f"have the same length — one entry per stage.")
+        if abs(sum(self.stage_ratios) - 1.0) > 1e-6:
+            raise ValueError(
+                f"stage_ratios must sum to 1.0, got "
+                f"{sum(self.stage_ratios):.4f}: {self.stage_ratios}")
+
+        n_stages = len(self.S_stages)
+        if stage_names and len(stage_names) == n_stages:
+            self.stage_names = stage_names
+        elif n_stages == len(STAGE_NAMES):
+            self.stage_names = STAGE_NAMES          # backward-compat default
+        else:
+            self.stage_names = [f"Stage {j+1}" for j in range(n_stages)]
         self.sim_time          = sim_time
         self.warmup            = warmup
         self.snap_interval     = snapshot_interval
@@ -318,7 +349,7 @@ class LiveSimulation:
             util   = busy / S_j if S_j > 0 else 0
             stage_status.append({
                 "stage"      : j+1,
-                "name"       : STAGE_NAMES[j],
+                "name"       : self.stage_names[j],
                 "S"          : S_j,
                 "busy"       : busy,
                 "idle"       : S_j - busy,
@@ -335,7 +366,7 @@ class LiveSimulation:
         for p in self.products:
             ptype = p["type"]
             wq_list = []
-            for j in range(3):
+            for j in range(len(self.S_stages)):
                 wl = self.waits[(ptype, j)]
                 wq_list.append(sum(wl)/len(wl) if wl else 0.0)
             total_wq = sum(wq_list)
@@ -412,7 +443,7 @@ class LiveSimulation:
         random.seed(self.seed)
         env    = simpy.Environment()
         stages = [simpy.Resource(env, capacity=self.S_stages[j])
-                  for j in range(3)]
+                  for j in range(len(self.S_stages))]
 
         def is_warmup(t): return t < self.warmup
 
@@ -436,7 +467,7 @@ class LiveSimulation:
             ptype = p["type"]
             stage_Wq = []
             stage_Ws = []
-            for j in range(3):
+            for j in range(len(self.S_stages)):
                 wl = self.waits[(ptype, j)]
                 sl = self.sojourns[(ptype, j)]
                 stage_Wq.append(round(sum(wl)/len(wl),4) if wl else 0.0)
@@ -449,7 +480,7 @@ class LiveSimulation:
 
             # Analytical comparison per stage
             anal_stage = []
-            for j in range(3):
+            for j in range(len(self.S_stages)):
                 st_j = p["total_hrs"] * self.stage_ratios[j]
                 mu_j = 1.0/st_j if st_j>0 else 1
                 a    = analytical_MMS(p["lam"]*self.n_shifts, mu_j,
@@ -463,7 +494,7 @@ class LiveSimulation:
             # Eq 3.8 analytical lambda** per stage, for direct comparison
             # against the DES's measured effective arrival rate above
             lam_star_stages = []
-            for j in range(3):
+            for j in range(len(self.S_stages)):
                 st_j = p["total_hrs"] * self.stage_ratios[j]
                 mu_j = 1.0/st_j if st_j > 0 else 1
                 Cs   = self.S_stages[j] * mu_j
@@ -494,7 +525,7 @@ class LiveSimulation:
 
         # Stage-level final stats
         stage_final = []
-        for j in range(3):
+        for j in range(len(self.S_stages)):
             q_obs  = self.queue_obs[j]
             b_obs  = self.busy_obs[j]
             avg_Lq = round(sum(q_obs)/len(q_obs), 4) if q_obs else 0
@@ -502,7 +533,7 @@ class LiveSimulation:
                        if b_obs else 0
             stage_final.append({
                 "stage"    : j+1,
-                "name"     : STAGE_NAMES[j],
+                "name"     : self.stage_names[j],
                 "S"        : self.S_stages[j],
                 "avg_Lq"   : avg_Lq,
                 "avg_util" : avg_util,
@@ -510,7 +541,7 @@ class LiveSimulation:
             })
 
         # Bottleneck by Lq
-        bn_by_Lq = max(range(3), key=lambda j: stage_final[j]["avg_Lq"])+1
+        bn_by_Lq = max(range(len(self.S_stages)), key=lambda j: stage_final[j]["avg_Lq"])+1
         bn_by_rho = max(product_results, key=lambda x: x["rho"])["type"]
 
         return {
@@ -544,13 +575,16 @@ def run_experiment(products:     List[dict],
                    sim_time:     float = 1000,
                    warmup:       float = 100,
                    seed:         int   = 42,
-                   renege_T:     float = 1.0) -> List[dict]:
+                   renege_T:     float = 1.0,
+                   stage_ratios: List[float] = None,
+                   stage_names:  List[str]   = None) -> List[dict]:
     """
     Run multiple scenarios and compare KPIs.
 
     Each scenario is a dict:
       {"name": str, "S_stages": list, "policy": str, "n_shifts": int,
-       "renege_T": float (optional, defaults to the renege_T argument)}
+       "renege_T": float, "stage_ratios": list, "stage_names": list,
+       "shifts_per_stage": list}   (all optional overrides)
 
     Returns list of results for comparison.
 
@@ -560,6 +594,9 @@ def run_experiment(products:     List[dict],
       {"name":"2 shifts",    "S_stages":[5,3,5], "policy":"exhaustive","n_shifts":2}
       {"name":"Gated",       "S_stages":[5,3,5], "policy":"gated",     "n_shifts":1}
       {"name":"More patient","S_stages":[5,3,5], "renege_T":2.0}   # per-scenario override
+      {"name":"4-stage Sheet Metal", "S_stages":[5,3,5,2],
+       "stage_ratios":[0.2,0.4,0.25,0.15],
+       "stage_names":["Plate Shears","Punching","Bending","Welding"]}
     """
     results = []
     for i, sc in enumerate(scenarios):
@@ -568,6 +605,9 @@ def run_experiment(products:     List[dict],
             S_stages       = sc.get("S_stages", S_DEFAULT),
             policy         = sc.get("policy", "exhaustive"),
             n_shifts       = sc.get("n_shifts", 1),
+            shifts_per_stage = sc.get("shifts_per_stage", None),
+            stage_ratios   = sc.get("stage_ratios", stage_ratios),
+            stage_names    = sc.get("stage_names", stage_names),
             sim_time       = sim_time,
             warmup         = warmup,
             snapshot_interval = sim_time/10,
@@ -687,7 +727,7 @@ def run_validation() -> tuple:
         sim_time=5000, warmup=500, snapshot_interval=500, seed=42)
     r1 = sim1.run()
 
-    for j in range(3):
+    for j in range(len(RATIOS)):
         st_j = 6 * RATIOS[j]
         mu_j = 1/st_j
         anal = analytical_MMS(2.0, mu_j, 1)
