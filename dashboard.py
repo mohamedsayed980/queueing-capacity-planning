@@ -149,6 +149,44 @@ def global_products_as_flat(stage_idx: int = None) -> list:
         })
     return out
 
+def stage_config_selector(key_prefix: str) -> tuple:
+    """
+    Renders a "Stage Configuration" panel: default 3-stage (Cutting/
+    Punching/Bending, S=[5,3,5], CL-12) unless the user opts into a
+    custom N-stage layout — for exploring other departments per Table
+    4.4 (Mechanical Workshop, Cupper Workshop, etc.), confirmed with
+    Mohamed (Session 15) as three SEPARATE independent configs, not one
+    cross-department routing model.
+
+    Returns (S_list, ratios_list, names_list, is_custom).
+    Ratios are auto-normalized from whatever positive weights the user
+    enters, so they always sum to 1.0 without fiddly manual arithmetic.
+    """
+    mode = st.radio("Stage Configuration", ["Default 3-Stage (CL-12)", "Custom N-Stage"],
+                     horizontal=True, key=f"{key_prefix}_stagecfg")
+    if mode == "Default 3-Stage (CL-12)":
+        return [5, 3, 5], [0.2, 0.5, 0.3], ["Cutting", "Punching", "Bending"], False
+
+    n = st.number_input("Number of stages", 2, 8, 3, key=f"{key_prefix}_nstages")
+    st.caption("Enter any positive relative time-weight per stage — "
+               "auto-normalized to sum to 1.0, no need to make them "
+               "add up exactly yourself.")
+    S_list, weights, names = [], [], []
+    for j in range(int(n)):
+        c1, c2, c3 = st.columns([2, 1, 1])
+        nm = c1.text_input(f"Stage {j+1} name", value=f"Stage {j+1}",
+                            key=f"{key_prefix}_nm_{j}")
+        w = c2.number_input(f"Weight", 0.01, 100.0, 1.0, key=f"{key_prefix}_w_{j}")
+        s = c3.number_input(f"S", 1, 20, 3, key=f"{key_prefix}_s_{j}")
+        names.append(nm); weights.append(w); S_list.append(int(s))
+    total_w = sum(weights)
+    ratios = [round(w/total_w, 4) for w in weights]
+    # Fix rounding so ratios sum to EXACTLY 1.0 (last stage absorbs residual)
+    ratios[-1] = round(1.0 - sum(ratios[:-1]), 4)
+    st.caption(f"Normalized ratios: {ratios} (sum={sum(ratios):.4f})")
+    return S_list, ratios, names, True
+
+
 def product_source_selector(key_prefix: str, stage_idx: int = None,
                              default_products: list = None) -> tuple:
     """
@@ -169,6 +207,8 @@ def product_source_selector(key_prefix: str, stage_idx: int = None,
     if "Tab 9" in choice:
         return global_products_as_flat(stage_idx), "Tab 9 Fitted"
     return (default_products or PRODUCTS_EXP), "Built-in"
+
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SIDEBAR
@@ -1035,20 +1075,16 @@ with tab7:
                      "reasonably exceed 1hr.")
 
             st.divider()
-            st.markdown("**Server Config (CL-12):**")
+            S7, ratios7, names7, custom7 = stage_config_selector("t7")
             st.caption("Shifts here are PER-STAGE — e.g. Shifts=2 at "
-                       "Punching alone, to target that specific "
+                       "one stage alone, to target that specific "
                        "bottleneck. Mathematically identical to doubling "
                        "S there (confirmed: this engine has no shift-time "
                        "-window modeling, servers are always available) —"
                        " this is just a cleaner way to express it.")
-            S7, shifts7 = [], []
-            for j, (nm, df) in enumerate(
-                    zip(["Cutting","Punching","Bending"],[5,3,5])):
-                cS, cSh = st.columns([2,1])
-                sv = cS.slider(f"S{j+1} {nm}", 1, 10, df, key=f"s7_{j}")
-                sh = cSh.selectbox(f"Shifts", [1,2,3], key=f"sh7_{j}")
-                S7.append(sv)
+            shifts7 = []
+            for j, nm in enumerate(names7):
+                sh = st.selectbox(f"Shifts — {nm}", [1,2,3], key=f"sh7_{j}")
                 shifts7.append(sh)
 
             run7 = st.button("▶ RUN SIMULATION", type="primary",
@@ -1064,11 +1100,19 @@ with tab7:
                     sim7 = LiveSimulation(
                         prod7, S_stages=S7, policy=policy7,
                         n_shifts=n_sh7, shifts_per_stage=shifts7,
+                        stage_ratios=ratios7, stage_names=names7,
                         sim_time=sim_t7,
                         warmup=sim_t7//10,
                         snapshot_interval=sim_t7//10,
                         seed=int(seed7), renege_T=renege_T7)
                     r7 = sim7.run()
+                if custom7:
+                    st.caption("ℹ️ Custom stage config active — the product "
+                               "mix above (total_hrs) still reflects the "
+                               "built-in Sheet Metal Dept. case study. If "
+                               "modeling a different department (e.g. "
+                               "Mechanical Workshop), update the product "
+                               "data via Tab 9 too for meaningful results.")
 
                 # Top metrics
                 st.subheader("📈 Final KPIs")
