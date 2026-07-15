@@ -159,7 +159,8 @@ class DemoSimulator:
                     self._by_id(jid).status = "service"
 
     def snapshot(self, t) -> dict:
-        jobs_out, x_lane = [], {1: 0.0, 2: 3.0, 3: 6.0}
+        jobs_out = []
+        x_lane = _compute_x_lane(self.cfg.servers_per_stage.keys())
         for stage, servers in self.busy.items():
             for slot, occ in enumerate(servers):
                 if occ:
@@ -214,7 +215,7 @@ def _convert_live_snapshot(raw: dict, products: List[dict]) -> dict:
       compatibility with snapshots taken before the live_simulation.py
       per-job patch.
     """
-    x_lane = {1: 0.0, 2: 3.0, 3: 6.0}
+    x_lane = _compute_x_lane(s["stage"] for s in raw["stage_status"])
     MAX_DOTS = 25  # cap rendered dots/stage; true count kept in queue_len
 
     machines_out, queue_len = [], {}
@@ -297,25 +298,38 @@ _PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
             "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
 
 
-def build_cfg_for_run(S_stages: List[int], product_names: List[str]) -> SimConfig:
+def build_cfg_for_run(S_stages: List[int], product_names: List[str],
+                       stage_names: List[str] = None) -> SimConfig:
     """
-    Builds a SimConfig whose `servers_per_stage` and `products` actually
-    match what was simulated, instead of relying on SimConfig()'s demo
-    placeholder defaults (S=[5,3,5], products={8BD,6AX,STD}) — which
-    silently drop any job whose product name isn't one of those 3, and
-    mis-render machine slots if S_stages differs from the default.
+    Builds a SimConfig whose `servers_per_stage`, `products`, and
+    `stage_names` all ACTUALLY match what was simulated, instead of
+    relying on SimConfig()'s demo placeholder defaults (S=[5,3,5],
+    products={8BD,6AX,STD}, 3 hardcoded stage names) — which silently
+    drop any job whose product name isn't one of those 3, mis-render
+    machine slots if S_stages differs from the default, and previously
+    (before Session 15's N-stage generalization) would KeyError on any
+    stage number not in the hardcoded 3-entry stage_names dict.
+
+    stage_names: optional, one name per stage (e.g. from Table 4.4 —
+    ["Plate Shears","Punching","Bending","Welding"]). Defaults to
+    "Stage 1".."Stage N" if not given.
     """
     products = {name: _PALETTE[i % len(_PALETTE)]
                 for i, name in enumerate(product_names)}
     servers = {i + 1: s for i, s in enumerate(S_stages)}
-    return SimConfig(servers_per_stage=servers, products=products)
+    names = (stage_names if stage_names and len(stage_names) == len(S_stages)
+             else [f"Stage {i+1}" for i in range(len(S_stages))])
+    names_dict = {i + 1: n for i, n in enumerate(names)}
+    return SimConfig(servers_per_stage=servers, products=products,
+                      stage_names=names_dict)
 
 
 def load_snapshots_from_live(S_stages=None, policy="exhaustive", n_shifts=1,
                               sim_time=1500, warmup=150, snapshot_interval=50,
                               seed=42, product_mode="Experimental",
                               renege_T=1.0, products=None,
-                              shifts_per_stage=None) -> List[dict]:
+                              shifts_per_stage=None,
+                              stage_ratios=None, stage_names=None) -> List[dict]:
     """
     Real integration path: runs your actual live_simulation.LiveSimulation
     and converts its aggregate KPI snapshots into animation frames.
@@ -328,6 +342,10 @@ def load_snapshots_from_live(S_stages=None, policy="exhaustive", n_shifts=1,
     shifts_per_stage: optional [sh1,sh2,sh3] — per-stage shift count,
     passed straight through to LiveSimulation (see its docstring for why
     this is mathematically identical to manually multiplying S_stages).
+
+    stage_ratios, stage_names: N-stage generalization (Session 15) —
+    passed straight through to LiveSimulation. len(S_stages) determines
+    N; stage_ratios must match that length and sum to 1.0.
     """
     live = importlib.import_module("live_simulation")
     if products is None:
@@ -336,6 +354,7 @@ def load_snapshots_from_live(S_stages=None, policy="exhaustive", n_shifts=1,
     sim = live.LiveSimulation(
         products, S_stages=S_stages or live.S_DEFAULT, policy=policy,
         n_shifts=n_shifts, shifts_per_stage=shifts_per_stage,
+        stage_ratios=stage_ratios, stage_names=stage_names,
         sim_time=sim_time, warmup=warmup,
         snapshot_interval=snapshot_interval, seed=seed, renege_T=renege_T,
     )
@@ -367,16 +386,26 @@ def load_snapshots(cfg: SimConfig = None, use_real: bool = True) -> List[dict]:
 # ------------------------------------------------------------------
 
 STATUS_COLOR = {"idle": "#2ecc71", "busy": "#e74c3c"}  # green / red
-X_LANE = {1: 0.0, 2: 3.0, 3: 6.0}
+
+def _compute_x_lane(stage_keys) -> Dict[int, float]:
+    """
+    Dynamically spaces stage lanes left-to-right based on however many
+    stages are actually configured. Was hardcoded to exactly 3 fixed
+    positions ({1:0, 2:3, 3:6}) in FOUR separate places throughout this
+    file — all four now derive it from the real stage count instead
+    (Session 15, N-stage generalization, Item 3).
+    """
+    return {stage: idx * 3.0 for idx, stage in enumerate(sorted(stage_keys))}
 
 
 def _frame_traces(snap: dict, cfg: SimConfig) -> List[go.Scatter]:
     traces = []
+    x_lane = _compute_x_lane(cfg.servers_per_stage.keys())
     # machines (rectangles drawn as large square markers per server slot)
     for stage, n in cfg.servers_per_stage.items():
         mstates = [m for m in snap["machines"] if m["stage"] == stage]
         traces.append(go.Scatter(
-            x=[X_LANE[stage] + 0.6] * len(mstates),
+            x=[x_lane[stage] + 0.6] * len(mstates),
             y=[m["server_id"] + 0.5 for m in mstates],
             mode="markers",
             marker=dict(symbol="square", size=26,
@@ -407,6 +436,8 @@ def build_animation_figure(snapshots: List[dict], cfg: SimConfig = None,
     if not snapshots:
         raise ValueError("No snapshots to animate — check the data source.")
 
+    x_lane = _compute_x_lane(cfg.servers_per_stage.keys())
+    n_stages = len(x_lane)
     base_traces = _frame_traces(snapshots[0], cfg)
     def _q_label(st, s):
         n = s["queue_len"][st]
@@ -420,7 +451,7 @@ def build_animation_figure(snapshots: List[dict], cfg: SimConfig = None,
         go.Frame(data=_frame_traces(s, cfg), name=f"t={s['t']:.1f}",
                   layout=go.Layout(
                       annotations=[
-                          dict(x=X_LANE[st] + 0.6, y=-1.2,
+                          dict(x=x_lane[st] + 0.6, y=-1.2,
                                text=_q_label(st, s),
                                showarrow=False, font=dict(size=12))
                           for st in cfg.servers_per_stage
@@ -431,10 +462,14 @@ def build_animation_figure(snapshots: List[dict], cfg: SimConfig = None,
     fig = go.Figure(data=base_traces, frames=frames)
 
     max_slots = max(cfg.servers_per_stage.values())
+    title = (f"Job Shop — Live Animated Flow "
+              f"({' -> '.join('Stage ' + str(s) for s in sorted(x_lane))})"
+             if n_stages != 3 else "Job Shop — Live Animated Flow (Stage 1 -> 2 -> 3)")
     fig.update_layout(
-        title="Job Shop — Live Animated Flow (Stage 1 -> 2 -> 3)",
-        xaxis=dict(range=[-2, 8], tickvals=list(X_LANE.values()),
-                   ticktext=[cfg.stage_names[s] for s in X_LANE], title=""),
+        title=title,
+        xaxis=dict(range=[-2, max(x_lane.values(), default=6.0) + 2],
+                   tickvals=list(x_lane.values()),
+                   ticktext=[cfg.stage_names[s] for s in x_lane], title=""),
         yaxis=dict(range=[-2, max_slots + 1], title="Server slot / queue position"),
         height=520,
         legend_title="Product type",
@@ -459,7 +494,7 @@ def build_animation_figure(snapshots: List[dict], cfg: SimConfig = None,
             x=0.0, y=-0.05, len=1.0,
         )],
         annotations=[
-            dict(x=X_LANE[st] + 0.6, y=-1.2, text=_q_label(st, snapshots[0]),
+            dict(x=x_lane[st] + 0.6, y=-1.2, text=_q_label(st, snapshots[0]),
                  showarrow=False, font=dict(size=12))
             for st in cfg.servers_per_stage
         ],

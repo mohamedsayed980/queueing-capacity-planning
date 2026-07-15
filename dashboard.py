@@ -1148,11 +1148,15 @@ with tab7:
                     # Utilization gauge chart
                     utils7 = [s["utilization"]
                                for s in last_snap["stage_status"]]
+                    stage_labels7 = [f"S{s['stage']} {s['name']}"
+                                     for s in last_snap["stage_status"]]
+                    palette7 = ["#3B82F6","#EF4444","#10B981","#F59E0B",
+                                "#8B5CF6","#EC4899","#14B8A6","#F97316"]
                     fig7a = go.Figure(go.Bar(
-                        x=[f"S{j+1} {['Cutting','Punching','Bending'][j]}"
-                           for j in range(3)],
+                        x=stage_labels7,
                         y=utils7,
-                        marker_color=["#3B82F6","#EF4444","#10B981"],
+                        marker_color=[palette7[i % len(palette7)]
+                                      for i in range(len(utils7))],
                         text=[f"{v:.1%}" for v in utils7],
                         textposition="outside"))
                     fig7a.add_hline(y=1.0, line_dash="dash",
@@ -1172,17 +1176,13 @@ with tab7:
                 prod_rows7 = []
                 for p in r7["products"]:
                     sw = p["stage_Wq_sim"]
-                    prod_rows7.append({
-                        "Product"  : p["type"],
-                        "ρ"        : p["rho"],
-                        "Done"     : p["n_done"],
-                        "Wq_S1"    : round(sw[0],1),
-                        "Wq_S2"    : round(sw[1],1),
-                        "Wq_S3"    : round(sw[2],1),
-                        "Total_Wq" : round(p["total_Wq_sim"],1),
-                        "Lead[hr]" : round(p["lead_time_sim"],1),
-                        "Revenue"  : f"${p['revenue_total']:,.0f}",
-                    })
+                    row = {"Product": p["type"], "ρ": p["rho"], "Done": p["n_done"]}
+                    for si, wq in enumerate(sw):
+                        row[f"Wq_S{si+1}"] = round(wq, 1)
+                    row["Total_Wq"] = round(p["total_Wq_sim"], 1)
+                    row["Lead[hr]"] = round(p["lead_time_sim"], 1)
+                    row["Revenue"] = f"${p['revenue_total']:,.0f}"
+                    prod_rows7.append(row)
                 st.dataframe(pd.DataFrame(prod_rows7),
                     hide_index=True, use_container_width=True)
 
