@@ -909,32 +909,30 @@ with tab6:
             0.0, 0.3, 0.0, 0.01, key="alp6")
 
         # Server config (CL-12)
-        st.markdown("**Server configuration (CL-12 machine groups):**")
-        S6 = []
-        for j in range(3):
-            stg = STAGES[j+1]
-            sv6 = st.slider(
-                f"S{j+1} — {stg['type']}",
-                1, 10, S_ACTUAL[j], key=f"s6_{j}")
-            S6.append(sv6)
+        S6, ratios6, names6, custom6 = stage_config_selector("t6")
+        if custom6:
+            st.caption("ℹ️ Custom stage config active — product mix "
+                       "(total_hrs) still reflects the built-in Sheet "
+                       "Metal Dept. case study. Update via Tab 9 too if "
+                       "modeling a different department.")
 
-        st.info(f"Shifts: {n_sh6} | Policy: {policy6} | "
-                f"S=[{S6[0]},{S6[1]},{S6[2]}]")
+        st.info(f"Shifts: {n_sh6} | Policy: {policy6} | S={S6}")
 
     with c2:
         st.subheader("📊 Per-Product × Per-Stage Results")
 
         # Compute per product per stage queue metrics
         prod_rows6 = []
-        stage_Wq_totals = [0.0]*3
+        n_stages6 = len(S6)
+        stage_Wq_totals = [0.0]*n_stages6
         for p in prod6_src:
             lam_eff6 = p["lam"] * n_sh6 / (1-alpha6) if alpha6>0 else p["lam"]*n_sh6
             h = p.get("total_hrs",80)
             row = {"Product":p["type"], "ρ":round(p["rho"],3),
                    "λ_eff":round(lam_eff6,3)}
             total_Wq6=0; total_Ws6=0
-            for j in range(3):
-                st_j = h*RATIOS[j]; mu_j=1/st_j
+            for j in range(n_stages6):
+                st_j = h*ratios6[j]; mu_j=1/st_j
                 S_j  = S6[j]
                 qm6  = queue_metrics(lam_eff6, mu_j, S_j)
                 Wq6  = round(qm6["Wq"],4) if qm6 else 0
@@ -953,8 +951,8 @@ with tab6:
 
         df6 = pd.DataFrame(prod_rows6)
         # Show clean columns
-        show_cols = ["Product","ρ","λ_eff",
-                     "Wq_S1","Wq_S2","Wq_S3","Σ Wq"]
+        show_cols = ["Product","ρ","λ_eff"] + \
+                    [f"Wq_S{j+1}" for j in range(n_stages6)] + ["Σ Wq"]
         if policy6=="Gated":
             show_cols.append("Σ Wq (Gated)")
         show_cols.append("Lead [hr]")
@@ -968,16 +966,16 @@ with tab6:
         m1.metric("Bottleneck Product", bn6_prod["Product"],
                   delta=f"ρ={bn6_prod['ρ']:.3f}")
         m2.metric("Bottleneck Stage",
-                  f"Stage {bn6_stg} ({STAGES[bn6_stg]['type']})",
+                  f"Stage {bn6_stg} ({names6[bn6_stg-1]})",
                   delta=f"Highest total Wq")
         m3.metric("Active Policy", policy6,
                   delta="65-97% E[L] reduction" if policy6=="Gated" else "Higher throughput")
 
         # ── Heatmap: Wq per product per stage ─────────────────────
         st.subheader("Heatmap — Waiting Time Wq [hr] per Product × Stage")
-        heat_z = [[r[f"Wq_S{j+1}"] for j in range(3)]
+        heat_z = [[r[f"Wq_S{j+1}"] for j in range(n_stages6)]
                    for r in prod_rows6]
-        heat_x = [f"S{j+1}\n{STAGES[j+1]['type']}" for j in range(3)]
+        heat_x = [f"S{j+1}\n{names6[j]}" for j in range(n_stages6)]
         heat_y = [r["Product"] for r in prod_rows6]
 
         fig6a = go.Figure(go.Heatmap(
@@ -1016,15 +1014,17 @@ with tab6:
     st.divider()
     st.subheader("📋 Decision Summary — Stage 3 MAIN ENGINE")
     total_rho6 = sum(p["rho"] for p in prod6_src)
+    S6_str = "[" + ",".join(str(s) for s in S6) + "]"
+    stage_names_str6 = "/".join(names6)
     st.markdown(f"""
     | Decision Factor | Value |
     |-----------------|-------|
     | System load (total ρ) | **{total_rho6:.3f}** ({mode6_short}) |
     | Service policy | **{policy6}** |
     | Shifts per day | **{n_sh6}** ({n_sh6*8} hrs/day) |
-    | Server config | **S=[{S6[0]},{S6[1]},{S6[2]}]** (Cutting/Punching/Bending) |
+    | Server config | **S={S6_str}** ({stage_names_str6}) |
     | Bottleneck product | **{bn6_prod['Product']}** (ρ={bn6_prod['ρ']:.3f}) |
-    | Bottleneck stage | **Stage {bn6_stg} — {STAGES[bn6_stg]['type']}** |
+    | Bottleneck stage | **Stage {bn6_stg} — {names6[bn6_stg-1]}** |
     | Recommended policy | **Gated** — fair, controlled, 65-97% E[L] reduction |
     | Capacity expansion | Add **shifts** (not servers) per CL-11 Point 3 |
     | BOM note | Each product = 100+ parts simplified to 1 aggregate (CL-11 Point 1) |
