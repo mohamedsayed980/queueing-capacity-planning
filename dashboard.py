@@ -1254,6 +1254,12 @@ with tab8:
                     ["Experimental","Actual MPS"], key="mode8")
             else:
                 st.caption(f"Using {len(src8)} products fitted in Tab 9")
+            S8, ratios8, stage_names8, custom8 = stage_config_selector("t8")
+            if custom8:
+                st.caption("ℹ️ Custom stage config active — the product "
+                           "mix (total_hrs) still reflects the built-in "
+                           "Sheet Metal Dept. case study. Update via "
+                           "Tab 9 too if modeling a different department.")
             sim_t8 = st.slider("Sim time [hr]",
                 200, 2000, 500, 100, key="st8")
             renege_T8 = st.slider(
@@ -1262,13 +1268,18 @@ with tab8:
                 help="Default patience for ALL scenarios below, unless "
                      "overridden by the patience-sensitivity checkbox.")
             st.markdown("**Select scenarios to compare:**")
-            sc_base  = st.checkbox("Baseline S=[5,3,5] Exhaustive",True)
-            sc_gated = st.checkbox("Gated policy S=[5,3,5]", True)
-            sc_s2    = st.checkbox("Add server S2: [5,4,5]", True)
-            sc_2sh   = st.checkbox("2 shifts S=[5,3,5]", False)
-            sc_3sh   = st.checkbox("3 shifts S=[5,3,5]", False)
+            sc_base  = st.checkbox(f"Baseline S={S8} Exhaustive", True, key="sc8_base")
+            sc_gated = st.checkbox(f"Gated policy S={S8}", True, key="sc8_gated")
+            _bn_preview = S8.index(min(S8))
+            _S8_plus_preview = list(S8); _S8_plus_preview[_bn_preview] += 1
+            sc_s2    = st.checkbox(
+                f"Add server @ {stage_names8[_bn_preview]}: {_S8_plus_preview}",
+                True, key="sc8_s2")
+            sc_2sh   = st.checkbox(f"2 shifts S={S8}", False, key="sc8_2sh")
+            sc_3sh   = st.checkbox(f"3 shifts S={S8}", False, key="sc8_3sh")
             sc_pat   = st.checkbox(
-                "Patience sensitivity: T=0.5 vs T=2.0 (S=[5,3,5])", False,
+                f"Patience sensitivity: T=0.5 vs T=2.0 (S={S8})", False,
+                key="sc8_pat",
                 help="Compares low vs high customer patience at baseline "
                      "S, holding everything else fixed — isolates the "
                      "reneging effect from Option B's finding.")
@@ -1284,32 +1295,53 @@ with tab8:
                 scenarios8 = []
                 if sc_base:
                     scenarios8.append({
-                        "name":"Baseline [5,3,5] Exh",
-                        "S_stages":[5,3,5],"policy":"exhaustive","n_shifts":1})
+                        "name":f"Baseline {S8} Exh",
+                        "S_stages":S8, "stage_ratios":ratios8,
+                        "stage_names":stage_names8,
+                        "policy":"exhaustive","n_shifts":1})
                 if sc_gated:
                     scenarios8.append({
-                        "name":"Gated [5,3,5]",
-                        "S_stages":[5,3,5],"policy":"gated","n_shifts":1})
+                        "name":f"Gated {S8}",
+                        "S_stages":S8, "stage_ratios":ratios8,
+                        "stage_names":stage_names8,
+                        "policy":"gated","n_shifts":1})
                 if sc_s2:
+                    # Generalizes "add 1 server to the bottleneck" to any N:
+                    # targets whichever stage currently has the SMALLEST S
+                    # (the natural capacity bottleneck), not a hardcoded
+                    # Stage 2 index that wouldn't make sense for arbitrary N.
+                    bn_idx8 = S8.index(min(S8))
+                    S8_plus = list(S8)
+                    S8_plus[bn_idx8] += 1
                     scenarios8.append({
-                        "name":"Add S2=4 [5,4,5]",
-                        "S_stages":[5,4,5],"policy":"exhaustive","n_shifts":1})
+                        "name":f"Add server @ {stage_names8[bn_idx8]} {S8_plus}",
+                        "S_stages":S8_plus, "stage_ratios":ratios8,
+                        "stage_names":stage_names8,
+                        "policy":"exhaustive","n_shifts":1})
                 if sc_2sh:
                     scenarios8.append({
-                        "name":"2 Shifts [5,3,5]",
-                        "S_stages":[5,3,5],"policy":"exhaustive","n_shifts":2})
+                        "name":f"2 Shifts {S8}",
+                        "S_stages":S8, "stage_ratios":ratios8,
+                        "stage_names":stage_names8,
+                        "policy":"exhaustive","n_shifts":2})
                 if sc_3sh:
                     scenarios8.append({
-                        "name":"3 Shifts [5,3,5]",
-                        "S_stages":[5,3,5],"policy":"exhaustive","n_shifts":3})
+                        "name":f"3 Shifts {S8}",
+                        "S_stages":S8, "stage_ratios":ratios8,
+                        "stage_names":stage_names8,
+                        "policy":"exhaustive","n_shifts":3})
                 if sc_pat:
                     scenarios8.append({
                         "name":"Low patience T=0.5",
-                        "S_stages":[5,3,5],"policy":"exhaustive","n_shifts":1,
+                        "S_stages":S8, "stage_ratios":ratios8,
+                        "stage_names":stage_names8,
+                        "policy":"exhaustive","n_shifts":1,
                         "renege_T":0.5})
                     scenarios8.append({
                         "name":"High patience T=2.0",
-                        "S_stages":[5,3,5],"policy":"exhaustive","n_shifts":1,
+                        "S_stages":S8, "stage_ratios":ratios8,
+                        "stage_names":stage_names8,
+                        "policy":"exhaustive","n_shifts":1,
                         "renege_T":2.0})
 
                 if not scenarios8:
@@ -1393,9 +1425,10 @@ with tab8:
                 st.info("👆 Select scenarios and click RUN EXPERIMENTS")
                 st.markdown("""
                 **Available scenarios:**
-                - **Baseline**: Current factory S=[5,3,5], 1 shift
+                - **Baseline**: Current stage config, 1 shift
                 - **Gated policy**: Same servers, fairer scheduling
-                - **Add S2=4**: Add 1 server to bottleneck Stage 2
+                - **Add server**: +1 server at whichever stage currently
+                  has the smallest S (the natural bottleneck)
                 - **2/3 Shifts**: Increase capacity via shifts (CL-11)
 
                 **Output includes:**
