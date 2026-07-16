@@ -294,7 +294,16 @@ class LiveSimulation:
                 # part ops, which concentrates around the mean far more
                 # than a single Exponential draw does).
                 mean_st = stage_tms[j]
-                k_j = prod.get("k_stages", [1, 1, 1])[j] if prod.get("k_stages") else 1
+                ks = prod.get("k_stages")
+                # ADDITIVE safety fix (Session 16): k_stages from Tab 9's
+                # Global Product Source fit is always exactly 3 elements
+                # (Tab 9 fits against its own fixed 3-stage ratios), but
+                # this run may be configured for a DIFFERENT stage count
+                # (N-stage generalization, Item 3). A stage index beyond
+                # what was fitted falls back to k=1 (plain Exponential)
+                # rather than crashing — correct, since Tab 9 genuinely
+                # has no Erlang-k data for a stage it never fitted.
+                k_j = ks[j] if ks and j < len(ks) else 1
                 if k_j <= 1:
                     # UNCHANGED from before — exact same call, same RNG
                     # sequence for the default/no-part-level-data case,

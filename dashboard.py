@@ -1861,13 +1861,10 @@ with tab10:
                      "the queue and leaves the system.")
 
             st.divider()
-            st.markdown("**Server Config (CL-12):**")
-            S10, shifts10 = [], []
-            for j, (nm, df) in enumerate(zip(["Cutting", "Punching", "Bending"], [5, 3, 5])):
-                cS, cSh = st.columns([2,1])
-                sv = cS.slider(f"S{j+1} {nm}", 1, 10, df, key=f"s10_{j}")
-                sh = cSh.selectbox("Shifts", [1,2,3], key=f"sh10_{j}")
-                S10.append(sv)
+            S10, ratios10, names10, custom10 = stage_config_selector("t10")
+            shifts10 = []
+            for j, nm in enumerate(names10):
+                sh = st.selectbox(f"Shifts — {nm}", [1,2,3], key=f"sh10_{j}")
                 shifts10.append(sh)
 
             st.caption("ℹ️ At S=[5,3,5], queues now stay bounded (jobs that "
@@ -1889,6 +1886,7 @@ with tab10:
                         snaps10 = load_snapshots_from_live(
                             S_stages=S10, policy=policy10, n_shifts=n_sh10,
                             shifts_per_stage=shifts10,
+                            stage_ratios=ratios10, stage_names=names10,
                             sim_time=sim_t10, warmup=max(sim_t10 // 10, 5),
                             snapshot_interval=max(sim_t10 // 40, 5),
                             product_mode=mode10, renege_T=renege_T10,
@@ -1898,6 +1896,7 @@ with tab10:
                         snaps10 = load_snapshots_from_live(
                             S_stages=S10, policy=policy10, n_shifts=n_sh10,
                             shifts_per_stage=shifts10,
+                            stage_ratios=ratios10, stage_names=names10,
                             sim_time=sim_t10, warmup=max(sim_t10 // 10, 5),
                             snapshot_interval=max(sim_t10 // 40, 5),
                             products=src10, renege_T=renege_T10,
@@ -1909,10 +1908,17 @@ with tab10:
                     # that would misrepresent what's physically on the
                     # floor. The shift effect shows up in throughput/queue
                     # behavior instead, which is the honest way to show it.
-                    cfg10 = build_cfg_for_run(S10, prod_names10)
+                    cfg10 = build_cfg_for_run(S10, prod_names10, stage_names=names10)
                     fig10 = build_animation_figure(snaps10, cfg10, frame_duration_ms=speed_ms10)
                 st.session_state["tab10_fig"] = fig10
                 st.session_state["tab10_frames"] = len(snaps10)
+                if custom10:
+                    st.caption("ℹ️ Custom stage config active — the product "
+                               "mix above (total_hrs) still reflects the "
+                               "built-in Sheet Metal Dept. case study. If "
+                               "modeling a different department, update the "
+                               "product data via Tab 9 too for meaningful "
+                               "results.")
                 st.session_state["tab10_products"] = prod_names10
 
             if "tab10_fig" in st.session_state:
