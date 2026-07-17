@@ -22,18 +22,20 @@ This project transforms a **1999 M.Sc. thesis** in Industrial Engineering into a
 What began as a static analytical study using queueing theory has been rebuilt
 from the ground up using Python, SimPy, Streamlit, and Plotly — turning
 25-year-old mathematical models into a **live digital twin** of a manufacturing
-job shop.
+job shop, now generalized beyond the original 3-stage case study to support
+any number of stages, any number of products, and real economic patience
+(reneging) behavior grounded in the thesis's own equations.
 
 ### The Journey: 1999 → 2026
 
 ```
 1999 (Original Thesis)              2026 (This Platform)
 ─────────────────────               ────────────────────────────────
-📄 20 pages + hand calculations  →  💻 6 Python modules (3,900+ lines)
-📊 Static tables & charts        →  📊 9-tab interactive dashboard
+📄 20 pages + hand calculations  →  💻 7 Python modules (6,900+ lines)
+📊 Static tables & charts        →  📊 10-tab interactive dashboard
 🔢 M/M/S analytical formulas     →  🔴 Real-time SimPy simulation
-🏭 Single case study             →  🔬 Experiment runner (∞ scenarios)
-📋 Paper document                →  🌐 Professional web application
+🏭 Fixed 3-stage case study      →  🔧 Configurable N-stage / M-queue engine
+📋 Paper document                →  🎬 Animated factory floor (per-job tracking)
 ```
 
 ### 💬 The Real Story
@@ -54,39 +56,54 @@ job shop.
 
 ## ✨ Key Features
 
-### 📊 9-Tab Interactive Dashboard
+### 📊 10-Tab Interactive Dashboard
 
 | Tab | Feature | Description |
 |-----|---------|-------------|
 | 1 | 📊 Queue Analysis | 20 single-server models (M/M/1, M/G/1, M/D/1, M/Ek/1...) |
 | 2 | 💰 Capacity Planning | Optimal server count S* via Eqs 3.8-3.10 |
 | 3 | 📅 Monthly Schedule | Priority loading, shift selection, Exhaustive vs Gated |
-| 4 | 🔬 Case Study | 6-product job shop pre-loaded & ready |
+| 4 | 🔬 Case Study | Fixed 6-product / 3-stage reference — the original thesis case study, kept unchanged as a baseline |
 | 5 | 🔗 Series Queues | Jackson Network — per-stage bottleneck analysis |
-| 6 | 🏭 Multi-Queue Engine | **MAIN ENGINE** — N products × M stages × S servers |
-| 7 | 🔴 Live Simulation | SimPy DES with real-time machine status |
-| 8 | 📊 Statistical Reports | Scenario comparison + CSV export |
-| 9 | 🔧 Input & Fit | 4-step data pipeline: demand → λ → μ → model |
+| 6 | 🏭 Multi-Queue Engine | **MAIN ENGINE** — N products × configurable M stages × S servers |
+| 7 | 🔴 Live Simulation | SimPy DES with real-time machine status, reneging, per-stage shifts |
+| 8 | 📊 Statistical Reports | Scenario comparison, patience/T sensitivity, CSV export |
+| 9 | 🔧 Input & Fit | 4-step data pipeline: demand → λ → μ → model, feeds Tabs 1-8/10 |
+| 10 | 🎬 Animation | Live-animated factory floor — exact per-job tracking, not aggregate approximation |
 
-### 🏗️ 3-Stage Analytical Engine
+### 🔧 Configurable N-Stage / M-Queue Engine
 
-```
-Stage 1: Single-Server Survey      Stage 2: Multi-Server          Stage 3: Main Engine
-────────────────────────────       ──────────────────────          ─────────────────────
-M/M/1   M/M/S   M/G/1              Series (Jackson)               N queues × M stages
-M/D/1   M/Ek/1  M/Gamma/1          Parallel servers               S servers per stage
-M/M/∞   M/M/S/K Priority           Bottleneck detection           Exhaustive policy
-M/H₂/1  G/G/1   ...                Per-stage Wq, Ws, Lq           Gated policy
-```
+Originally hardcoded to exactly 3 stages (matching the thesis's Sheet Metal
+Dept. case study), the engine now generalizes to **any number of stages**,
+with **editable stage names** — so the same validated math can model a
+different department (e.g. Mechanical Workshop, Cupper Workshop) just by
+reconfiguring stage count, names, and server counts, without touching code.
+Tabs 6, 7, 8, and 10 all support this; **Tab 4 is deliberately kept fixed**
+as the original thesis's unchanging reference case.
 
-### 🔴 Live Simulation (Digital Twin)
+### ⏱️ Finite-Patience Reneging (Eq 3.8)
 
-```
-[Job arrives] → [Stage 1: Cutting S=5] → [Stage 2: Punching S=3] → [Stage 3: Bending S=5]
-                      ████░                    ███ ⚠️BUSY                  ████░
-                   4/5 busy                 3/3 busy!                  4/5 busy
-                   Queue: 2                 Queue: 8 ← BOTTLENECK      Queue: 0
-```
+The DES engine now implements genuine finite-patience behavior: a job that
+waits longer than a configurable patience time `T` at any stage abandons
+the queue, matching the thesis's own `λ**` (effective arrival rate) formula
+instead of assuming customers wait forever. This closes a real structural
+gap between the original analytical model and the simulation engine.
+
+### 🎬 Animated Factory Floor (Digital Twin)
+
+Plotly-based live animation of the job shop, built directly on the SimPy
+DES engine — jobs are tracked with **exact per-job identity** (not a
+statistical approximation), colored by product, moving through
+configurable stages with live queue-length and waiting-time readouts.
+
+### 🔗 Global Product Source
+
+Tab 9's distribution-fitting pipeline (Poisson/Exponential/Gamma/Erlang-k)
+can feed its fitted product parameters directly into Tabs 1-8 and 10 via a
+shared toggle — including part-level Erlang-k service-time fitting, which
+correctly models a product's total processing time as the sum of many
+small part operations (low-variance, near-deterministic) rather than a
+single high-variance Exponential draw.
 
 ---
 
@@ -94,29 +111,33 @@ M/H₂/1  G/G/1   ...                Per-stage Wq, Ws, Lq           Gated policy
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    dashboard.py (9 tabs)                        │
-│    Streamlit + Plotly Interactive Web Application               │
-└──────────┬──────────────────────────────────────┬──────────────┘
-           │                                      │
-┌──────────▼──────────┐              ┌────────────▼────────────┐
-│   ANALYTICAL ENGINE  │              │   SIMULATION ENGINE     │
-│                      │              │                         │
-│  queue_engine.py     │              │  simpy_engine.py        │
-│  ├─ Stage 1 (20 mdl) │              │  ├─ Layer 1: M/M/S      │
-│  ├─ Stage 2 (Jackson)│              │  ├─ Layer 2: Series      │
-│  └─ Stage 3 (Multi-Q)│              │  └─ Layer 3: Job Shop    │
-│                      │              │                         │
-│  capacity_planner.py │              │  live_simulation.py     │
-│  ├─ Eq 3.8: λ**      │              │  ├─ Machine status       │
-│  ├─ Eq 3.9: Rs**     │              │  ├─ KPI snapshots        │
-│  └─ Eq 3.10: Rn(S)   │              │  └─ Experiment runner    │
-└──────────────────────┘              └─────────────────────────┘
+│                    dashboard.py (10 tabs)                       │
+│    Streamlit + Plotly Interactive Web Application                │
+└──────────┬──────────────────────┬───────────────────┬───────────┘
+           │                      │                   │
+┌──────────▼──────────┐  ┌────────▼────────────┐ ┌────▼─────────────┐
+│   ANALYTICAL ENGINE  │  │   SIMULATION ENGINE  │ │  ANIMATION ENGINE │
+│                      │  │                      │ │                   │
+│  queue_engine.py     │  │  simpy_engine.py     │ │ animation_engine  │
+│  ├─ Stage 1 (20 mdl) │  │  ├─ Layer 1: M/M/S   │ │  .py              │
+│  ├─ Stage 2 (Jackson)│  │  ├─ Layer 2: Series  │ │  ├─ Per-job         │
+│  ├─ Stage 3 (Multi-Q)│  │  └─ Layer 3: Job Shop│ │  │  identity tracking│
+│  └─ MEkS_approx      │  │                      │ │  └─ N-stage layout │
+│     (multi-server     │  │  live_simulation.py  │ │                   │
+│      Erlang-k)        │  │  ├─ Reneging (Eq 3.8)│ └───────────────────┘
+│                      │  │  ├─ N-stage generic   │
+│  capacity_planner.py │  │  ├─ Erlang-k service  │
+│  ├─ Eq 3.8: λ**      │  │  ├─ Machine status    │
+│  ├─ Eq 3.9: Rs**     │  │  └─ Experiment runner │
+│  └─ Eq 3.10: Rn(S)   │  │                      │
+└──────────────────────┘  └──────────────────────┘
            │
 ┌──────────▼──────────────────────────────────────────────────────┐
 │                    INPUT LAYER                                   │
 │              distribution_fitting.py                            │
-│  Step 1: Demand → λ  │  Step 2: Service → μ  │  Step 3: Cost   │
-│  Step 4: Fit (Poisson/Exp/Gamma/Erlang) + Export               │
+│  Step 1: Demand → λ  │  Step 2: Service → μ (+ part-level k)   │
+│  Step 3: Cost → NR    │  Step 4: Fit + Export (Global Product   │
+│                        │           Source, feeds all tabs)      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -132,7 +153,7 @@ W_q = \frac{L_q}{\lambda}$$
 
 ### Capacity Planning Equations (Eqs 3.8–3.10)
 
-$$\lambda^{**} = \frac{2T(S\mu)^2}{1 + 2TS\mu} \quad \text{(Eq 3.8)}$$
+$$\lambda^{**} = \frac{2T(S\mu)^2}{1 + 2TS\mu} \quad \text{(Eq 3.8 — now also the basis for DES reneging)}$$
 
 $$R_s^{**} = \lambda_{int} \times SP \quad \text{(Eq 3.9)}$$
 
@@ -148,6 +169,10 @@ $$R_n = \lambda_{int} \times NR(S), \quad NR(S) = \frac{NR_{base}}{S} \quad \tex
 ---
 
 ## 🔬 Case Study — Job Shop (6 Products × 3 Stages)
+
+Tab 4 keeps this exact configuration fixed as the thesis's original reference
+case — every other N-stage-capable tab defaults to it too, but can be
+reconfigured away from it.
 
 | Product | μ [u/hr] | λ [u/hr] | ρ | NR [$/u] |
 |---------|---------|---------|---|----------|
@@ -168,6 +193,11 @@ Stage 3 — Bending  machines (Group 3): S=5  → M/M/5
 Stage ratios: [0.2 : 0.5 : 0.3] × total machining hours
 ```
 
+Beyond this fixed reference case, the same engine also models other
+departments per the factory's real machine-type table (e.g. Mechanical
+Workshop: Turning/Milling/Grinding/Drilling; Cupper Workshop:
+Cutting/Punching/Bending) as independent N-stage configurations.
+
 ---
 
 ## ✅ Validation Results
@@ -185,6 +215,10 @@ Stage ratios: [0.2 : 0.5 : 0.3] × total machining hours
 - SimPy vs Analytical: **< 3% deviation** ✓
 - Bottleneck detection: **G.T3 confirmed** ✓
 - Gated E[L] reduction: **67–97%** ✓
+- N-stage generalization: **bit-identical** to the original 3-stage engine
+  when N=3, verified against pre-generalization output on the same seed ✓
+- Reneging (Eq 3.8): DES-measured effective arrival rate cross-checked
+  against the analytical λ** formula, computed independently per stage ✓
 
 ---
 
@@ -194,7 +228,7 @@ Stage ratios: [0.2 : 0.5 : 0.3] × total machining hours
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/queueing-capacity-planning.git
+git clone https://github.com/mohamedsayed980/queueing-capacity-planning.git
 cd queueing-capacity-planning
 
 # Install dependencies
@@ -211,25 +245,34 @@ streamlit run dashboard.py
 ### Use as Python Library
 
 ```python
-from core.queue_engine import run_model
-from core.capacity_planner import optimize_S
-from core.live_simulation import LiveSimulation, run_experiment
+from queue_engine import run_model, MEkS_approx
+from capacity_planner import optimize_S
+from live_simulation import LiveSimulation, run_experiment
 
-# Single queue analysis
+# Single queue analysis (any of 20 classic models)
 result = run_model(model_id=2, lam=2.0, mu=9.23, S=3)
 print(f"Lq={result['Lq']}, Wq={result['Wq']}, ρ={result['rho']}")
+
+# Multi-server Erlang-k approximation (Allen-Cunneen)
+erlang_result = MEkS_approx(lam=7, mu=9.23, S=3, k=10)
+print(f"Wq(Erlang-10)={erlang_result['Wq']}")
 
 # Optimize server count
 opt = optimize_S(mu=9.23, SP=25000, NR_base=48.4, T=0.4)
 print(f"Optimal S*={opt['S_opt']}, Max Rn={opt['Rn_max']:.2f}")
 
-# Run experiment comparison
+# Run experiment comparison — now with configurable stages, shifts-per-
+# stage, and patience (T) as per-scenario overrides
 scenarios = [
-    {"name":"Baseline",    "S_stages":[5,3,5], "policy":"exhaustive"},
-    {"name":"Add server",  "S_stages":[5,4,5], "policy":"exhaustive"},
-    {"name":"Gated",       "S_stages":[5,3,5], "policy":"gated"},
+    {"name":"Baseline",     "S_stages":[5,3,5], "policy":"exhaustive"},
+    {"name":"Add server",   "S_stages":[5,4,5], "policy":"exhaustive"},
+    {"name":"Gated",        "S_stages":[5,3,5], "policy":"gated"},
+    {"name":"More patient", "S_stages":[5,3,5], "renege_T":2.0},
+    {"name":"4-stage config","S_stages":[5,3,5,2],
+     "stage_ratios":[0.2,0.4,0.25,0.15],
+     "stage_names":["Plate Shears","Punching","Bending","Welding"]},
 ]
-from core.live_simulation import PRODUCTS_EXP
+from live_simulation import PRODUCTS_EXP
 results = run_experiment(PRODUCTS_EXP, scenarios, sim_time=1000)
 ```
 
@@ -240,22 +283,19 @@ results = run_experiment(PRODUCTS_EXP, scenarios, sim_time=1000)
 ```
 queueing-capacity-planning/
 │
-├── dashboard.py                    # 9-tab Streamlit application
+├── dashboard.py                    # 10-tab Streamlit application
 │
-├── core/
-│   ├── queue_engine.py             # 20 queue models (Stages 1,2,3)
-│   ├── capacity_planner.py         # Economic optimization (Eqs 3.8-3.10)
-│   ├── simpy_engine.py             # SimPy DES validation engine
-│   ├── distribution_fitting.py     # Input data pipeline (4 steps)
-│   └── live_simulation.py          # Live KPI engine + experiment runner
+├── queue_engine.py                 # 20 queue models + MEkS_approx (Stages 1,2,3)
+├── capacity_planner.py             # Economic optimization (Eqs 3.8-3.10)
+├── simpy_engine.py                 # SimPy DES validation engine
+├── distribution_fitting.py         # Input data pipeline (4 steps) + part-level Erlang-k
+├── live_simulation.py              # DES engine: reneging, N-stage generic, experiment runner
+├── animation_engine.py             # Animated factory floor (exact per-job tracking)
 │
 ├── docs/
 │   ├── Thesis_Modernization_Notes.md  # All clarifications CL-1→13
 │   ├── architecture_diagram.md        # System architecture
 │   └── validation_results.md          # Full validation report
-│
-├── tests/
-│   └── run_all_validations.py      # Run all module tests
 │
 ├── requirements.txt
 ├── .gitignore
@@ -270,7 +310,7 @@ queueing-capacity-planning/
 |-----------|------|---------|
 | Python | Core language | 3.8+ |
 | Streamlit | Web dashboard | Latest |
-| Plotly | Interactive charts | Latest |
+| Plotly | Interactive charts & animation | Latest |
 | SimPy | Discrete-event simulation | 4.1.2 |
 | SciPy | Distribution fitting | Latest |
 | Pandas | Data manipulation | Latest |
@@ -281,15 +321,16 @@ queueing-capacity-planning/
 ## 🔮 Future Development Roadmap
 
 ```
-Phase 3 (Planned):
-  🎬 animation_engine.py    — Plotly animated factory floor
-                              (jobs moving stage1→stage2→stage3)
-
 Domain Templates (Planned):
   🏥 healthcare_template.py — Patient flow, doctor scheduling
   🚚 logistics_template.py  — Warehouse, shipping lanes
   ☎️  callcenter_template.py — Agent queues, customer service
   🏦 banking_template.py    — Transaction queues, teller scheduling
+
+Sequential Batch Scheduling (Planned):
+  📦 batch_sequencing_engine.py — Flow-shop-style sequential batch
+                                   production (distinct from the
+                                   current open-queueing-network model)
 
 The SAME queueing engine powers all domains.
 Only the domain parameters change.
@@ -310,7 +351,7 @@ This project is based on the M.Sc. thesis:
 - **Jackson Networks** (product-form solutions)
 - **Polling Systems** (Exhaustive & Gated service)
 - **Economic Optimization** (Net Revenue maximization)
-- **Discrete-Event Simulation** (SimPy DES)
+- **Discrete-Event Simulation** (SimPy DES, with finite-patience reneging)
 
 ### Original Thesis
 > Mohammed, M.M.S. (1999).
