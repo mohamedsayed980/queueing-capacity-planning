@@ -232,7 +232,7 @@ def product_source_selector(key_prefix: str, stage_idx: int = None,
 # SIDEBAR
 # ─────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("🏭 Job Shop Capacity Planner")
+    st.title("🏭 Capacity Planner")
     st.caption("M.Sc. Thesis 1999 → 2026")
     st.divider()
 
