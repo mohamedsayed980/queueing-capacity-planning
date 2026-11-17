@@ -49,19 +49,7 @@ st.markdown(f"""
   <p style='color:#b3d4ff;margin:0;font-size:1rem;'>
     Interactive Decision-Support Dashboard
     Author : Mohamed · M3 -
-    M.Sc. Thesis 1999 → Modernized 2026</p>
-    
-  TABS: 
-  Tab 1 — 📊 Queue Analysis     (Stage 1 single-stage M/M/S)
-  Tab 2 —💰 Capacity Planning   (Eqs 3.8-3.10, Tables 22-27)
-  Tab 3 —📅 Monthly Schedule    (CL-11: priority, shifts, policies)
-  Tab 4 —🔬 Case Study         (6 products, 3 stages, CL-12 groups)
-  Tab 5 —🔗 Series Queues (Stage 2)
-  Tab 6 —🏭 Multi-Queue Engine (Stage 3)
-  Tab 7 —🔴 Live Simulation
-  Tab 8 —📊 Statistical Reports
-  Tab 9 —🔧 Input & Fit
-  Tab 10 —🎬 Animation    
+    M.Sc. Thesis 1999 → Modernized 2026</p>    
 </div>""", unsafe_allow_html=True)
 
 
