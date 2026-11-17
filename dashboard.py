@@ -37,7 +37,7 @@ from queue_engine import run_model, MODEL_CATALOG
 # PAGE CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Job Shop Capacity Planner-nteractive Decision-Support Dashboard",
+    page_title="Job Shop Capacity Planner",
     page_icon="🏭", layout="wide",
 )
 
