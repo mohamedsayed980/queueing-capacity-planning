@@ -1,5 +1,5 @@
 """
-Job Shop Capacity Planner
+Job Shop Capacity Planner - Queueing Analtics Platform
 Interactive Decision-Support Dashboard
 Author : Mohamed · M3
 M.Sc. Thesis 1999 → Modernized 2026
@@ -36,7 +36,7 @@ from queue_engine import run_model, MODEL_CATALOG
 # PAGE CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Job Shop Capacity Planner",
+    page_title="Job Shop Capacity Planner - Queueing Analtics Platform",
     page_icon="🏭", layout="wide",
 )
 
