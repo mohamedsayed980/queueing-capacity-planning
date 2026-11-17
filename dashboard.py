@@ -36,7 +36,7 @@ from queue_engine import run_model, MODEL_CATALOG
 # PAGE CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Job Shop Capacity Planner - Queueing Analtics Platform",
+    page_title="Job Shop Capacity Planner Queueing Analtics Platform",
     page_icon="🏭", layout="wide",
 )
 
