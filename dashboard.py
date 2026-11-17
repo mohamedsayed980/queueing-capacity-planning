@@ -49,7 +49,7 @@ st.markdown(f"""
     🏭 Job Shop Capacity Planner </h1>
   <p style='color:#b3d4ff;margin:0;font-size:1rem;'>
   Interactive Decision-Support Dashboard
-    Author : Mohamed·M3
+    Author : Mohamed · M3 -
     M.Sc. Thesis 1999 → Modernized 2026</p>
     
 </div>""", unsafe_allow_html=True)
