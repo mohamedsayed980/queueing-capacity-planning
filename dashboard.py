@@ -48,7 +48,7 @@ st.markdown(f"""
   <h1 style='color:#fff;margin:0 0 8px 0;font-size:2.2rem;font-weight:800;'>
     🏭 Job Shop Capacity Planner </h1>
   <p style='color:#b3d4ff;margin:0;font-size:1rem;'>
-    Job Shop Capacity Planner · Interactive Decision-Support Dashboard
+  Interactive Decision-Support Dashboard
     Author : Mohamed · M3
     M.Sc. Thesis 1999 → Modernized 2026</p>
     
