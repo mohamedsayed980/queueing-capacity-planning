@@ -1,14 +1,20 @@
 """
-dashboard.py  —  v2.0
-=====================
+Job Shop Capacity Planner
 Interactive Decision-Support Dashboard
+Author : Mohamed · M3
 M.Sc. Thesis 1999 → Modernized 2026
 
-4 TABS:
-  Tab 1 — Queue Analysis      (Stage 1 single-stage M/M/S)
-  Tab 2 — Capacity Planning   (Eqs 3.8-3.10, Tables 22-27)
-  Tab 3 — Monthly Schedule    (CL-11: priority, shifts, policies)
-  Tab 4 — Case Study          (6 products, 3 stages, CL-12 groups)
+TABS: 
+Tab 1 — 📊 Queue Analysis     (Stage 1 single-stage M/M/S)
+Tab 2 —💰 Capacity Planning   (Eqs 3.8-3.10, Tables 22-27)
+Tab 3 —📅 Monthly Schedule    (CL-11: priority, shifts, policies)
+Tab 4 —🔬 Case Study         (6 products, 3 stages, CL-12 groups)
+Tab 5 —🔗 Series Queues (Stage 2)
+Tab 6 —🏭 Multi-Queue Engine (Stage 3)
+Tab 7 —🔴 Live Simulation
+Tab 8 —📊 Statistical Reports
+Tab 9 —🔧 Input & Fit
+Tab 10 —🎬 Animation
 
 CL-12: Server TYPES per stage (machine groups):
   Stage 1 = Group 1 = Cutting  machines (S=5) → M/M/5
@@ -16,8 +22,8 @@ CL-12: Server TYPES per stage (machine groups):
   Stage 3 = Group 3 = Bending  machines (S=5) → M/M/5
   Within each stage: servers are IDENTICAL (same type) → M/M/S valid
 
-RUN:  streamlit run dashboard.py
 """
+
 
 import streamlit as st
 import plotly.graph_objects as go
@@ -909,30 +915,32 @@ with tab6:
             0.0, 0.3, 0.0, 0.01, key="alp6")
 
         # Server config (CL-12)
-        S6, ratios6, names6, custom6 = stage_config_selector("t6")
-        if custom6:
-            st.caption("ℹ️ Custom stage config active — product mix "
-                       "(total_hrs) still reflects the built-in Sheet "
-                       "Metal Dept. case study. Update via Tab 9 too if "
-                       "modeling a different department.")
+        st.markdown("**Server configuration (CL-12 machine groups):**")
+        S6 = []
+        for j in range(3):
+            stg = STAGES[j+1]
+            sv6 = st.slider(
+                f"S{j+1} — {stg['type']}",
+                1, 10, S_ACTUAL[j], key=f"s6_{j}")
+            S6.append(sv6)
 
-        st.info(f"Shifts: {n_sh6} | Policy: {policy6} | S={S6}")
+        st.info(f"Shifts: {n_sh6} | Policy: {policy6} | "
+                f"S=[{S6[0]},{S6[1]},{S6[2]}]")
 
     with c2:
         st.subheader("📊 Per-Product × Per-Stage Results")
 
         # Compute per product per stage queue metrics
         prod_rows6 = []
-        n_stages6 = len(S6)
-        stage_Wq_totals = [0.0]*n_stages6
+        stage_Wq_totals = [0.0]*3
         for p in prod6_src:
             lam_eff6 = p["lam"] * n_sh6 / (1-alpha6) if alpha6>0 else p["lam"]*n_sh6
             h = p.get("total_hrs",80)
             row = {"Product":p["type"], "ρ":round(p["rho"],3),
                    "λ_eff":round(lam_eff6,3)}
             total_Wq6=0; total_Ws6=0
-            for j in range(n_stages6):
-                st_j = h*ratios6[j]; mu_j=1/st_j
+            for j in range(3):
+                st_j = h*RATIOS[j]; mu_j=1/st_j
                 S_j  = S6[j]
                 qm6  = queue_metrics(lam_eff6, mu_j, S_j)
                 Wq6  = round(qm6["Wq"],4) if qm6 else 0
@@ -951,8 +959,8 @@ with tab6:
 
         df6 = pd.DataFrame(prod_rows6)
         # Show clean columns
-        show_cols = ["Product","ρ","λ_eff"] + \
-                    [f"Wq_S{j+1}" for j in range(n_stages6)] + ["Σ Wq"]
+        show_cols = ["Product","ρ","λ_eff",
+                     "Wq_S1","Wq_S2","Wq_S3","Σ Wq"]
         if policy6=="Gated":
             show_cols.append("Σ Wq (Gated)")
         show_cols.append("Lead [hr]")
@@ -966,16 +974,16 @@ with tab6:
         m1.metric("Bottleneck Product", bn6_prod["Product"],
                   delta=f"ρ={bn6_prod['ρ']:.3f}")
         m2.metric("Bottleneck Stage",
-                  f"Stage {bn6_stg} ({names6[bn6_stg-1]})",
+                  f"Stage {bn6_stg} ({STAGES[bn6_stg]['type']})",
                   delta=f"Highest total Wq")
         m3.metric("Active Policy", policy6,
                   delta="65-97% E[L] reduction" if policy6=="Gated" else "Higher throughput")
 
         # ── Heatmap: Wq per product per stage ─────────────────────
         st.subheader("Heatmap — Waiting Time Wq [hr] per Product × Stage")
-        heat_z = [[r[f"Wq_S{j+1}"] for j in range(n_stages6)]
+        heat_z = [[r[f"Wq_S{j+1}"] for j in range(3)]
                    for r in prod_rows6]
-        heat_x = [f"S{j+1}\n{names6[j]}" for j in range(n_stages6)]
+        heat_x = [f"S{j+1}\n{STAGES[j+1]['type']}" for j in range(3)]
         heat_y = [r["Product"] for r in prod_rows6]
 
         fig6a = go.Figure(go.Heatmap(
@@ -1014,17 +1022,15 @@ with tab6:
     st.divider()
     st.subheader("📋 Decision Summary — Stage 3 MAIN ENGINE")
     total_rho6 = sum(p["rho"] for p in prod6_src)
-    S6_str = "[" + ",".join(str(s) for s in S6) + "]"
-    stage_names_str6 = "/".join(names6)
     st.markdown(f"""
     | Decision Factor | Value |
     |-----------------|-------|
     | System load (total ρ) | **{total_rho6:.3f}** ({mode6_short}) |
     | Service policy | **{policy6}** |
     | Shifts per day | **{n_sh6}** ({n_sh6*8} hrs/day) |
-    | Server config | **S={S6_str}** ({stage_names_str6}) |
+    | Server config | **S=[{S6[0]},{S6[1]},{S6[2]}]** (Cutting/Punching/Bending) |
     | Bottleneck product | **{bn6_prod['Product']}** (ρ={bn6_prod['ρ']:.3f}) |
-    | Bottleneck stage | **Stage {bn6_stg} — {names6[bn6_stg-1]}** |
+    | Bottleneck stage | **Stage {bn6_stg} — {STAGES[bn6_stg]['type']}** |
     | Recommended policy | **Gated** — fair, controlled, 65-97% E[L] reduction |
     | Capacity expansion | Add **shifts** (not servers) per CL-11 Point 3 |
     | BOM note | Each product = 100+ parts simplified to 1 aggregate (CL-11 Point 1) |
@@ -1148,15 +1154,11 @@ with tab7:
                     # Utilization gauge chart
                     utils7 = [s["utilization"]
                                for s in last_snap["stage_status"]]
-                    stage_labels7 = [f"S{s['stage']} {s['name']}"
-                                     for s in last_snap["stage_status"]]
-                    palette7 = ["#3B82F6","#EF4444","#10B981","#F59E0B",
-                                "#8B5CF6","#EC4899","#14B8A6","#F97316"]
                     fig7a = go.Figure(go.Bar(
-                        x=stage_labels7,
+                        x=[f"S{j+1} {['Cutting','Punching','Bending'][j]}"
+                           for j in range(3)],
                         y=utils7,
-                        marker_color=[palette7[i % len(palette7)]
-                                      for i in range(len(utils7))],
+                        marker_color=["#3B82F6","#EF4444","#10B981"],
                         text=[f"{v:.1%}" for v in utils7],
                         textposition="outside"))
                     fig7a.add_hline(y=1.0, line_dash="dash",
@@ -1176,13 +1178,17 @@ with tab7:
                 prod_rows7 = []
                 for p in r7["products"]:
                     sw = p["stage_Wq_sim"]
-                    row = {"Product": p["type"], "ρ": p["rho"], "Done": p["n_done"]}
-                    for si, wq in enumerate(sw):
-                        row[f"Wq_S{si+1}"] = round(wq, 1)
-                    row["Total_Wq"] = round(p["total_Wq_sim"], 1)
-                    row["Lead[hr]"] = round(p["lead_time_sim"], 1)
-                    row["Revenue"] = f"${p['revenue_total']:,.0f}"
-                    prod_rows7.append(row)
+                    prod_rows7.append({
+                        "Product"  : p["type"],
+                        "ρ"        : p["rho"],
+                        "Done"     : p["n_done"],
+                        "Wq_S1"    : round(sw[0],1),
+                        "Wq_S2"    : round(sw[1],1),
+                        "Wq_S3"    : round(sw[2],1),
+                        "Total_Wq" : round(p["total_Wq_sim"],1),
+                        "Lead[hr]" : round(p["lead_time_sim"],1),
+                        "Revenue"  : f"${p['revenue_total']:,.0f}",
+                    })
                 st.dataframe(pd.DataFrame(prod_rows7),
                     hide_index=True, use_container_width=True)
 
@@ -1254,12 +1260,6 @@ with tab8:
                     ["Experimental","Actual MPS"], key="mode8")
             else:
                 st.caption(f"Using {len(src8)} products fitted in Tab 9")
-            S8, ratios8, stage_names8, custom8 = stage_config_selector("t8")
-            if custom8:
-                st.caption("ℹ️ Custom stage config active — the product "
-                           "mix (total_hrs) still reflects the built-in "
-                           "Sheet Metal Dept. case study. Update via "
-                           "Tab 9 too if modeling a different department.")
             sim_t8 = st.slider("Sim time [hr]",
                 200, 2000, 500, 100, key="st8")
             renege_T8 = st.slider(
@@ -1268,18 +1268,13 @@ with tab8:
                 help="Default patience for ALL scenarios below, unless "
                      "overridden by the patience-sensitivity checkbox.")
             st.markdown("**Select scenarios to compare:**")
-            sc_base  = st.checkbox(f"Baseline S={S8} Exhaustive", True, key="sc8_base")
-            sc_gated = st.checkbox(f"Gated policy S={S8}", True, key="sc8_gated")
-            _bn_preview = S8.index(min(S8))
-            _S8_plus_preview = list(S8); _S8_plus_preview[_bn_preview] += 1
-            sc_s2    = st.checkbox(
-                f"Add server @ {stage_names8[_bn_preview]}: {_S8_plus_preview}",
-                True, key="sc8_s2")
-            sc_2sh   = st.checkbox(f"2 shifts S={S8}", False, key="sc8_2sh")
-            sc_3sh   = st.checkbox(f"3 shifts S={S8}", False, key="sc8_3sh")
+            sc_base  = st.checkbox("Baseline S=[5,3,5] Exhaustive",True)
+            sc_gated = st.checkbox("Gated policy S=[5,3,5]", True)
+            sc_s2    = st.checkbox("Add server S2: [5,4,5]", True)
+            sc_2sh   = st.checkbox("2 shifts S=[5,3,5]", False)
+            sc_3sh   = st.checkbox("3 shifts S=[5,3,5]", False)
             sc_pat   = st.checkbox(
-                f"Patience sensitivity: T=0.5 vs T=2.0 (S={S8})", False,
-                key="sc8_pat",
+                "Patience sensitivity: T=0.5 vs T=2.0 (S=[5,3,5])", False,
                 help="Compares low vs high customer patience at baseline "
                      "S, holding everything else fixed — isolates the "
                      "reneging effect from Option B's finding.")
@@ -1295,53 +1290,32 @@ with tab8:
                 scenarios8 = []
                 if sc_base:
                     scenarios8.append({
-                        "name":f"Baseline {S8} Exh",
-                        "S_stages":S8, "stage_ratios":ratios8,
-                        "stage_names":stage_names8,
-                        "policy":"exhaustive","n_shifts":1})
+                        "name":"Baseline [5,3,5] Exh",
+                        "S_stages":[5,3,5],"policy":"exhaustive","n_shifts":1})
                 if sc_gated:
                     scenarios8.append({
-                        "name":f"Gated {S8}",
-                        "S_stages":S8, "stage_ratios":ratios8,
-                        "stage_names":stage_names8,
-                        "policy":"gated","n_shifts":1})
+                        "name":"Gated [5,3,5]",
+                        "S_stages":[5,3,5],"policy":"gated","n_shifts":1})
                 if sc_s2:
-                    # Generalizes "add 1 server to the bottleneck" to any N:
-                    # targets whichever stage currently has the SMALLEST S
-                    # (the natural capacity bottleneck), not a hardcoded
-                    # Stage 2 index that wouldn't make sense for arbitrary N.
-                    bn_idx8 = S8.index(min(S8))
-                    S8_plus = list(S8)
-                    S8_plus[bn_idx8] += 1
                     scenarios8.append({
-                        "name":f"Add server @ {stage_names8[bn_idx8]} {S8_plus}",
-                        "S_stages":S8_plus, "stage_ratios":ratios8,
-                        "stage_names":stage_names8,
-                        "policy":"exhaustive","n_shifts":1})
+                        "name":"Add S2=4 [5,4,5]",
+                        "S_stages":[5,4,5],"policy":"exhaustive","n_shifts":1})
                 if sc_2sh:
                     scenarios8.append({
-                        "name":f"2 Shifts {S8}",
-                        "S_stages":S8, "stage_ratios":ratios8,
-                        "stage_names":stage_names8,
-                        "policy":"exhaustive","n_shifts":2})
+                        "name":"2 Shifts [5,3,5]",
+                        "S_stages":[5,3,5],"policy":"exhaustive","n_shifts":2})
                 if sc_3sh:
                     scenarios8.append({
-                        "name":f"3 Shifts {S8}",
-                        "S_stages":S8, "stage_ratios":ratios8,
-                        "stage_names":stage_names8,
-                        "policy":"exhaustive","n_shifts":3})
+                        "name":"3 Shifts [5,3,5]",
+                        "S_stages":[5,3,5],"policy":"exhaustive","n_shifts":3})
                 if sc_pat:
                     scenarios8.append({
                         "name":"Low patience T=0.5",
-                        "S_stages":S8, "stage_ratios":ratios8,
-                        "stage_names":stage_names8,
-                        "policy":"exhaustive","n_shifts":1,
+                        "S_stages":[5,3,5],"policy":"exhaustive","n_shifts":1,
                         "renege_T":0.5})
                     scenarios8.append({
                         "name":"High patience T=2.0",
-                        "S_stages":S8, "stage_ratios":ratios8,
-                        "stage_names":stage_names8,
-                        "policy":"exhaustive","n_shifts":1,
+                        "S_stages":[5,3,5],"policy":"exhaustive","n_shifts":1,
                         "renege_T":2.0})
 
                 if not scenarios8:
@@ -1425,10 +1399,9 @@ with tab8:
                 st.info("👆 Select scenarios and click RUN EXPERIMENTS")
                 st.markdown("""
                 **Available scenarios:**
-                - **Baseline**: Current stage config, 1 shift
+                - **Baseline**: Current factory S=[5,3,5], 1 shift
                 - **Gated policy**: Same servers, fairer scheduling
-                - **Add server**: +1 server at whichever stage currently
-                  has the smallest S (the natural bottleneck)
+                - **Add S2=4**: Add 1 server to bottleneck Stage 2
                 - **2/3 Shifts**: Increase capacity via shifts (CL-11)
 
                 **Output includes:**
@@ -1894,10 +1867,13 @@ with tab10:
                      "the queue and leaves the system.")
 
             st.divider()
-            S10, ratios10, names10, custom10 = stage_config_selector("t10")
-            shifts10 = []
-            for j, nm in enumerate(names10):
-                sh = st.selectbox(f"Shifts — {nm}", [1,2,3], key=f"sh10_{j}")
+            st.markdown("**Server Config (CL-12):**")
+            S10, shifts10 = [], []
+            for j, (nm, df) in enumerate(zip(["Cutting", "Punching", "Bending"], [5, 3, 5])):
+                cS, cSh = st.columns([2,1])
+                sv = cS.slider(f"S{j+1} {nm}", 1, 10, df, key=f"s10_{j}")
+                sh = cSh.selectbox("Shifts", [1,2,3], key=f"sh10_{j}")
+                S10.append(sv)
                 shifts10.append(sh)
 
             st.caption("ℹ️ At S=[5,3,5], queues now stay bounded (jobs that "
@@ -1919,7 +1895,6 @@ with tab10:
                         snaps10 = load_snapshots_from_live(
                             S_stages=S10, policy=policy10, n_shifts=n_sh10,
                             shifts_per_stage=shifts10,
-                            stage_ratios=ratios10, stage_names=names10,
                             sim_time=sim_t10, warmup=max(sim_t10 // 10, 5),
                             snapshot_interval=max(sim_t10 // 40, 5),
                             product_mode=mode10, renege_T=renege_T10,
@@ -1929,7 +1904,6 @@ with tab10:
                         snaps10 = load_snapshots_from_live(
                             S_stages=S10, policy=policy10, n_shifts=n_sh10,
                             shifts_per_stage=shifts10,
-                            stage_ratios=ratios10, stage_names=names10,
                             sim_time=sim_t10, warmup=max(sim_t10 // 10, 5),
                             snapshot_interval=max(sim_t10 // 40, 5),
                             products=src10, renege_T=renege_T10,
@@ -1941,17 +1915,10 @@ with tab10:
                     # that would misrepresent what's physically on the
                     # floor. The shift effect shows up in throughput/queue
                     # behavior instead, which is the honest way to show it.
-                    cfg10 = build_cfg_for_run(S10, prod_names10, stage_names=names10)
+                    cfg10 = build_cfg_for_run(S10, prod_names10)
                     fig10 = build_animation_figure(snaps10, cfg10, frame_duration_ms=speed_ms10)
                 st.session_state["tab10_fig"] = fig10
                 st.session_state["tab10_frames"] = len(snaps10)
-                if custom10:
-                    st.caption("ℹ️ Custom stage config active — the product "
-                               "mix above (total_hrs) still reflects the "
-                               "built-in Sheet Metal Dept. case study. If "
-                               "modeling a different department, update the "
-                               "product data via Tab 9 too for meaningful "
-                               "results.")
                 st.session_state["tab10_products"] = prod_names10
 
             if "tab10_fig" in st.session_state:
